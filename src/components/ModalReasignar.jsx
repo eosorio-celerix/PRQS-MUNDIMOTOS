@@ -3,41 +3,71 @@ import { empleadoService } from '../services/api'
 import './ModalReasignar.css'
 
 const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
+  const [sedes, setSedes] = useState([])
+  const [selectedSede, setSelectedSede] = useState(null)
+  const [sedeSearchTerm, setSedeSearchTerm] = useState('')
   const [usuarios, setUsuarios] = useState([])
   const [loading, setLoading] = useState(false)
+  const [loadingSedes, setLoadingSedes] = useState(false)
   const [error, setError] = useState(null)
   const [selectedUsuario, setSelectedUsuario] = useState(null)
-  const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     if (isOpen && token) {
-      cargarUsuarios()
+      cargarSedes()
+      // Resetear estados al abrir
+      setSelectedSede(null)
+      setSedeSearchTerm('')
+      setUsuarios([])
+      setSelectedUsuario(null)
     }
   }, [isOpen, token])
 
-  const cargarUsuarios = async () => {
+  useEffect(() => {
+    if (selectedSede && token) {
+      cargarUsuariosPorSede()
+    } else {
+      setUsuarios([])
+      setSelectedUsuario(null)
+    }
+  }, [selectedSede, token])
+
+  const cargarSedes = async () => {
+    setLoadingSedes(true)
+    setError(null)
+    try {
+      const listaSedes = await empleadoService.getSedes(token)
+      // Ordenar sedes por nombre (usando campo Sede)
+      const sedesOrdenadas = listaSedes.sort((a, b) => {
+        const nombreA = (a.Sede || a.sede || a.Nombre || a.nombre || '').toLowerCase()
+        const nombreB = (b.Sede || b.sede || b.Nombre || b.nombre || '').toLowerCase()
+        return nombreA.localeCompare(nombreB)
+      })
+      
+      setSedes(sedesOrdenadas)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoadingSedes(false)
+    }
+  }
+
+  const cargarUsuariosPorSede = async () => {
+    if (!selectedSede) return
+    
     setLoading(true)
     setError(null)
     try {
-      const listaUsuarios = await empleadoService.getUsuariosDisponibles(token)
-      
-      // Eliminar duplicados usando un Map basado en recordId
-      const usuariosUnicos = new Map()
-      listaUsuarios.forEach(usuario => {
-        const id = usuario.recordId || usuario.id
-        if (id && !usuariosUnicos.has(id)) {
-          usuariosUnicos.set(id, usuario)
-        }
-      })
-      
-      // Convertir Map a Array y ordenar por nombre
-      const usuariosFiltrados = Array.from(usuariosUnicos.values()).sort((a, b) => {
+      const listaUsuarios = await empleadoService.getUsuariosPorSede(selectedSede.pk_Sede, token)
+      console.log('listaUsuarios', listaUsuarios)
+      // Ordenar usuarios por nombre
+      const usuariosOrdenados = listaUsuarios.sort((a, b) => {
         const nombreA = (a.Nombre || a.nombre || a.Usuario || a.usuario || '').toLowerCase()
         const nombreB = (b.Nombre || b.nombre || b.Usuario || b.usuario || '').toLowerCase()
         return nombreA.localeCompare(nombreB)
       })
       
-      setUsuarios(usuariosFiltrados)
+      setUsuarios(usuariosOrdenados)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -52,11 +82,17 @@ const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
     }
   }
 
-  const usuariosFiltrados = usuarios.filter(usuario => {
-    const nombre = usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario || ''
-    const search = searchTerm.toLowerCase()
-    return nombre.toLowerCase().includes(search)
+  const sedesFiltradas = sedes.filter(sede => {
+    const nombreSede = (sede.Sede || sede.sede || sede.Nombre || sede.nombre || '').toLowerCase()
+    const search = sedeSearchTerm.toLowerCase()
+    return nombreSede.includes(search)
   })
+
+  const handleSedeSelect = (sede) => {
+    setSelectedSede(sede)
+    setSedeSearchTerm(sede.Sede || sede.sede || sede.Nombre || sede.nombre || '')
+    setSelectedUsuario(null)
+  }
 
   if (!isOpen) return null
 
@@ -69,7 +105,69 @@ const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
         </div>
 
         <div className="modal-body">
-          {loading ? (
+          {/* Selector de Sede */}
+          <div className="sede-selector">
+            <label htmlFor="sede-search">Seleccionar Sede:</label>
+            <div className="sede-autocomplete">
+              <input
+                id="sede-search"
+                type="text"
+                placeholder="Buscar sede..."
+                value={sedeSearchTerm}
+                onChange={(e) => {
+                  setSedeSearchTerm(e.target.value)
+                  if (selectedSede) {
+                    setSelectedSede(null)
+                    setUsuarios([])
+                    setSelectedUsuario(null)
+                  }
+                }}
+                className="search-input"
+                disabled={loadingSedes}
+              />
+              {sedeSearchTerm && !selectedSede && sedesFiltradas.length > 0 && (
+                <div className="autocomplete-dropdown">
+                  {sedesFiltradas.map((sede) => (
+                    <div
+                      key={sede.recordId || sede.id}
+                      className="autocomplete-item"
+                      onClick={() => handleSedeSelect(sede)}
+                    >
+                      {sede.Sede || sede.sede || sede.Nombre || sede.nombre || 'Sin nombre'}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {selectedSede && (
+              <div className="selected-sede">
+                <span>Sede seleccionada: <strong>{selectedSede.Sede || selectedSede.sede || selectedSede.Nombre || selectedSede.nombre}</strong></span>
+                <button 
+                  className="btn-clear-sede" 
+                  onClick={() => {
+                    setSelectedSede(null)
+                    setSedeSearchTerm('')
+                    setUsuarios([])
+                    setSelectedUsuario(null)
+                  }}
+                >
+                  Cambiar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Lista de Usuarios */}
+          {loadingSedes ? (
+            <div className="modal-loading">
+              <div className="spinner"></div>
+              <p>Cargando sedes...</p>
+            </div>
+          ) : !selectedSede ? (
+            <div className="modal-message">
+              <p>Por favor, seleccione una sede para ver los usuarios disponibles</p>
+            </div>
+          ) : loading ? (
             <div className="modal-loading">
               <div className="spinner"></div>
               <p>Cargando usuarios...</p>
@@ -77,26 +175,17 @@ const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
           ) : error ? (
             <div className="modal-error">
               <p>{error}</p>
-              <button onClick={cargarUsuarios} className="btn-retry">Reintentar</button>
+              <button onClick={cargarUsuariosPorSede} className="btn-retry">Reintentar</button>
             </div>
           ) : (
             <>
-              <div className="modal-search">
-                <input
-                  type="text"
-                  placeholder="Buscar usuario..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="search-input"
-                />
-              </div>
-
               <div className="usuarios-list">
-                {usuariosFiltrados.length === 0 ? (
-                  <p className="no-results">No se encontraron usuarios</p>
+                {usuarios.length === 0 ? (
+                  <p className="no-results">No se encontraron usuarios para esta sede</p>
                 ) : (
-                  usuariosFiltrados.map((usuario) => {
+                  usuarios.map((usuario) => {
                     const nombre = usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario || 'Sin nombre'
+                    const claseNombre = usuario.claseEmpleado?.nombre || ''
                     const isSelected = selectedUsuario?.recordId === usuario.recordId
                     
                     return (
@@ -107,6 +196,9 @@ const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
                       >
                         <div className="usuario-info">
                           <span className="usuario-nombre">{nombre}</span>
+                          {claseNombre && (
+                            <span className="usuario-clase">{claseNombre}</span>
+                          )}
                           {usuario.Email && (
                             <span className="usuario-email">{usuario.Email}</span>
                           )}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { empleadoService, pqrsService } from '../services/api'
 import ModalReasignar from './ModalReasignar'
+import ModalComentario from './ModalComentario'
 import './GestionPQRS.css'
 
 const GestionPQRS = ({ empleadoInfo, onLogout }) => {
@@ -10,6 +11,7 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
   const [loading, setLoading] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [error, setError] = useState(null)
+  const [successMessage, setSuccessMessage] = useState(null)
   const [actualizando, setActualizando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState('Todos') // Filtro por estado
   const [activeTab, setActiveTab] = useState('detalle') // Pestaña activa: 'detalle', 'historial' o 'adjuntos'
@@ -18,6 +20,11 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
   const [historialPQRS, setHistorialPQRS] = useState([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
   const [showModalReasignar, setShowModalReasignar] = useState(false)
+  const [showModalComentario, setShowModalComentario] = useState(false)
+  const [modalComentarioContexto, setModalComentarioContexto] = useState(null) // 'reasignar', 'cambiarEstado', o null
+  const [modalComentarioTitulo, setModalComentarioTitulo] = useState('Agregar Comentario')
+  const [estadoPendiente, setEstadoPendiente] = useState(null) // Para guardar el estado cuando se abre el modal
+  const [usuarioPendiente, setUsuarioPendiente] = useState(null) // Para guardar el usuario cuando se reasigna
   const [ordenFecha, setOrdenFecha] = useState('reciente') // 'reciente' o 'antiguo'
 
   const token = localStorage.getItem('empleado_token')
@@ -221,72 +228,25 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     }
   }
 
-  const handleActualizarEstado = async (nuevoEstado) => {
+  const handleActualizarEstado = (nuevoEstado) => {
     if (!selectedPQRS || !token) return
-
-    setActualizando(true)
-    try {
-      await empleadoService.actualizarPQRS(
-        selectedPQRS.recordId || selectedPQRS.id,
-        { Estado: nuevoEstado },
-        token
-      )
-      // Recargar lista completa y aplicar filtro
-      const todas = await empleadoService.getPQRSPendientes(token)
-      setAllPQRS(todas)
-      aplicarFiltro(filtroEstado, todas)
-      
-      // Actualizar detalle
-      if (selectedPQRS) {
-        const detalle = await pqrsService.getPQRSById(selectedPQRS.recordId || selectedPQRS.id)
-        setSelectedPQRS(detalle)
-      }
-    } catch (err) {
-      setError(err.message)
-      if (err.message.includes('Sesión expirada')) {
-        onLogout()
-      }
-    } finally {
-      setActualizando(false)
-    }
+    
+    // Guardar el estado y abrir modal de comentario
+    setEstadoPendiente(nuevoEstado)
+    setModalComentarioContexto('cambiarEstado')
+    setModalComentarioTitulo(`Cambiar Estado a "${nuevoEstado}"`)
+    setShowModalComentario(true)
   }
 
-  const handleReasignar = async (recordId, usuario) => {
+  const handleReasignar = (recordId, usuario) => {
     if (!token) return
-
-    setActualizando(true)
-    try {
-      // Ajustar el nombre del campo según la estructura de FileMaker
-      // Puede ser "Asignado_a", "Usuario_asignado", "Responsable", etc.
-      await empleadoService.actualizarPQRS(
-        recordId,
-        { 
-          Asignado_a: usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario,
-          Usuario_asignado: usuario.recordId || usuario.id
-        },
-        token
-      )
-      
-      // Recargar lista completa y aplicar filtro
-      const todas = await empleadoService.getPQRSPendientes(token)
-      setAllPQRS(todas)
-      aplicarFiltro(filtroEstado, todas)
-      
-      // Actualizar detalle
-      if (selectedPQRS && (selectedPQRS.recordId === recordId || selectedPQRS.id === recordId)) {
-        const detalle = await pqrsService.getPQRSById(recordId)
-        setSelectedPQRS(detalle)
-      }
-      
-      setShowModalReasignar(false)
-    } catch (err) {
-      setError(err.message)
-      if (err.message.includes('Sesión expirada')) {
-        onLogout()
-      }
-    } finally {
-      setActualizando(false)
-    }
+    
+    // Guardar el usuario y abrir modal de comentario
+    setUsuarioPendiente({ recordId, usuario })
+    setModalComentarioContexto('reasignar')
+    setModalComentarioTitulo('Reasignar PQRS')
+    setShowModalReasignar(false)
+    setShowModalComentario(true)
   }
 
   // Ordenar historial para mostrar (más reciente primero)
@@ -296,6 +256,154 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
       const fechaB = b.fecha ? new Date(b.fecha) : new Date(0)
       return fechaB - fechaA
     })
+  }
+
+  // Calcular días restantes para cumplir con el plazo de 15 días
+  const calcularDiasRestantes = (fechaCreacion) => {
+    if (!fechaCreacion) return null
+
+    try {
+      // Intentar parsear la fecha en diferentes formatos
+      let fecha = null
+      
+      // Si es string, intentar parsearlo
+      if (typeof fechaCreacion === 'string') {
+        // Formato MM/DD/YYYY
+        if (fechaCreacion.includes('/')) {
+          const [mes, dia, año] = fechaCreacion.split('/')
+          fecha = new Date(parseInt(año), parseInt(mes) - 1, parseInt(dia))
+        } else {
+          // Intentar parsear como ISO
+          fecha = new Date(fechaCreacion)
+        }
+      } else {
+        fecha = new Date(fechaCreacion)
+      }
+
+      if (isNaN(fecha.getTime())) return null
+
+      // Fecha límite: 15 días después de la creación
+      const fechaLimite = new Date(fecha)
+      fechaLimite.setDate(fechaLimite.getDate() + 15)
+
+      // Fecha actual
+      const hoy = new Date()
+      hoy.setHours(0, 0, 0, 0)
+      fechaLimite.setHours(0, 0, 0, 0)
+
+      // Calcular diferencia en días
+      const diferenciaMs = fechaLimite - hoy
+      const diasRestantes = Math.ceil(diferenciaMs / (1000 * 60 * 60 * 24))
+
+      return diasRestantes
+    } catch (error) {
+      console.error('Error al calcular días restantes:', error)
+      return null
+    }
+  }
+
+  // Obtener clase CSS según días restantes
+  const obtenerClaseDiasRestantes = (diasRestantes) => {
+    if (diasRestantes === null) return 'dias-restantes-unknown'
+    if (diasRestantes < 0) return 'dias-restantes-expirado'
+    if (diasRestantes <= 3) return 'dias-restantes-critico'
+    if (diasRestantes <= 7) return 'dias-restantes-advertencia'
+    return 'dias-restantes-normal'
+  }
+
+  const handleGuardarComentario = async (comentario, notificarCliente) => {
+    if (!selectedPQRS || !token) return
+
+    setActualizando(true)
+    setError(null)
+
+    try {
+      const recordId = selectedPQRS.recordId || selectedPQRS.id
+
+      // Si hay contexto, realizar la acción primero
+      if (modalComentarioContexto === 'cambiarEstado' && estadoPendiente) {
+        // Cambiar estado
+        await empleadoService.actualizarPQRS(
+          recordId,
+          { Estado: estadoPendiente },
+          token
+        )
+      } else if (modalComentarioContexto === 'reasignar' && usuarioPendiente) {
+        // Reasignar
+        const usuario = usuarioPendiente.usuario
+        await empleadoService.actualizarPQRS(
+          usuarioPendiente.recordId,
+          { 
+            Asignado_a: usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario,
+            Usuario_asignado: usuario.recordId || usuario.id
+          },
+          token
+        )
+      }
+
+      // Agregar comentario a la bitácora
+      await empleadoService.agregarComentarioBitacora(recordId, comentario, token)
+
+      // Si está marcado para notificar al cliente, enviar email
+      if (notificarCliente) {
+        const nombreCompleto = selectedPQRS.Nombre_completo || selectedPQRS.nombre || ''
+        const email = selectedPQRS.Correo || selectedPQRS.email || ''
+        const radicado = recordId
+
+        await empleadoService.enviarEmailComentario(nombreCompleto, email, radicado, comentario)
+      }
+
+      // Recargar lista completa y aplicar filtro
+      const todas = await empleadoService.getPQRSPendientes(token)
+      setAllPQRS(todas)
+      aplicarFiltro(filtroEstado, todas)
+
+      // Actualizar detalle
+      const detalle = await pqrsService.getPQRSById(recordId)
+      setSelectedPQRS(detalle)
+
+      // Recargar historial si estamos en esa pestaña
+      if (activeTab === 'historial') {
+        await cargarHistorial(recordId)
+      }
+
+      // Guardar contexto antes de limpiar para el mensaje
+      const contexto = modalComentarioContexto
+
+      // Limpiar estados
+      setEstadoPendiente(null)
+      setUsuarioPendiente(null)
+      setModalComentarioContexto(null)
+
+      // Mostrar mensaje de éxito
+      const mensaje = contexto 
+        ? 'Acción realizada y comentario agregado exitosamente' + (notificarCliente ? ' y notificación enviada al cliente' : '')
+        : 'Comentario agregado exitosamente' + (notificarCliente ? ' y notificación enviada al cliente' : '')
+      setSuccessMessage(mensaje)
+      
+      // Limpiar mensaje después de 5 segundos
+      setTimeout(() => {
+        setSuccessMessage(null)
+      }, 5000)
+    } catch (err) {
+      setError(err.message)
+      if (err.message.includes('Sesión expirada')) {
+        onLogout()
+      }
+      throw err
+    } finally {
+      setActualizando(false)
+    }
+  }
+
+  const handleAbrirModalComentario = () => {
+    if (!selectedPQRS) {
+      alert('Por favor, seleccione una PQRS primero')
+      return
+    }
+    setModalComentarioContexto(null)
+    setModalComentarioTitulo('Agregar Comentario')
+    setShowModalComentario(true)
   }
 
   const handleAsignar = async (usuario) => {
@@ -344,6 +452,27 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
         <div className="alert alert-error">
           <span className="alert-icon">⚠️</span>
           <span>{error}</span>
+          <button 
+            onClick={() => setError(null)}
+            className="alert-close"
+            aria-label="Cerrar mensaje"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="alert alert-success">
+          <span className="alert-icon">✅</span>
+          <span>{successMessage}</span>
+          <button 
+            onClick={() => setSuccessMessage(null)}
+            className="alert-close"
+            aria-label="Cerrar mensaje"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -424,9 +553,33 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                       {(pqrs.Descripcion_pqrs || pqrs.descripcion || '').substring(0, 100)}
                       {(pqrs.Descripcion_pqrs || pqrs.descripcion || '').length > 100 ? '...' : ''}
                     </p>
-                    {pqrs.Fecha_creacion && (
-                      <p className="pqrs-fecha">📅 {pqrs.Fecha_creacion}</p>
-                    )}
+                    <div className="pqrs-item-footer">
+                      {(pqrs.Fecha_creacion || pqrs.CreationTimestamp) && (
+                        <p className="pqrs-fecha">📅 {pqrs.Fecha_creacion || pqrs.CreationTimestamp}</p>
+                      )}
+                      {(() => {
+                        // No mostrar días restantes si el estado es "cerrada"
+                        const estado = (pqrs.Estado || pqrs.estado || '').toLowerCase()
+                        if (estado === 'cerrada') return null
+                        
+                        const fechaCreacion = pqrs.Fecha_creacion || pqrs.CreationTimestamp || pqrs.fechaCreacion
+                        const diasRestantes = calcularDiasRestantes(fechaCreacion)
+                        if (diasRestantes === null) return null
+                        
+                        const claseDias = obtenerClaseDiasRestantes(diasRestantes)
+                        const texto = diasRestantes < 0 
+                          ? `⚠️ Expirado hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? 's' : ''}`
+                          : diasRestantes === 0
+                          ? '⚠️ Expira hoy'
+                          : `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''} restante${diasRestantes !== 1 ? 's' : ''}`
+                        
+                        return (
+                          <span className={`dias-restantes ${claseDias}`}>
+                            {texto}
+                          </span>
+                        )
+                      })()}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -638,6 +791,11 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                               <div className="historial-meta">
                                 <span className="historial-fecha">{cambio.fecha || 'Sin fecha'}</span>
                               </div>
+                              {cambio.comentario && (
+                                <div className="historial-comentario">
+                                  <strong>Comentario:</strong> {cambio.comentario}
+                                </div>
+                              )}
                               {cambio.detalles && (
                                 <div className="historial-detalles">
                                   {Object.entries(cambio.detalles).map(([key, value]) => (
@@ -680,6 +838,38 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
         recordId={selectedPQRS?.recordId || selectedPQRS?.id}
         token={token}
       />
+
+      <ModalComentario
+        isOpen={showModalComentario}
+        onClose={() => {
+          setShowModalComentario(false)
+          setModalComentarioContexto(null)
+          setEstadoPendiente(null)
+          setUsuarioPendiente(null)
+          setError(null)
+        }}
+        onGuardar={async (comentario, notificarCliente) => {
+          try {
+            await handleGuardarComentario(comentario, notificarCliente)
+          } catch (err) {
+            // El error ya se maneja en handleGuardarComentario
+            throw err
+          }
+        }}
+        titulo={modalComentarioTitulo}
+        accionContexto={modalComentarioContexto}
+      />
+
+      {/* Botón flotante para agregar comentario */}
+      {selectedPQRS && (
+        <button
+          className="btn-flotante-comentario"
+          onClick={handleAbrirModalComentario}
+          title="Agregar comentario"
+        >
+          💬
+        </button>
+      )}
     </div>
   )
 }

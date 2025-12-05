@@ -96,6 +96,98 @@
   background: #1565c0;
 }
 
+.sede-selector {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.sede-selector label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.sede-autocomplete {
+  position: relative;
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.autocomplete-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover {
+  background: rgba(13, 71, 161, 0.05);
+}
+
+.selected-sede {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(13, 71, 161, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(13, 71, 161, 0.2);
+}
+
+.selected-sede span {
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.selected-sede strong {
+  color: #0d47a1;
+}
+
+.btn-clear-sede {
+  background: transparent;
+  border: 1px solid #0d47a1;
+  color: #0d47a1;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-clear-sede:hover {
+  background: #0d47a1;
+  color: white;
+}
+
+.modal-message {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
+}
+
 .modal-search {
   margin-bottom: 1.5rem;
 }
@@ -155,6 +247,13 @@
   font-weight: 600;
   color: #333;
   font-size: 1rem;
+}
+
+.usuario-clase {
+  font-size: 0.875rem;
+  color: #0d47a1;
+  font-weight: 500;
+  font-style: italic;
 }
 
 .usuario-email {

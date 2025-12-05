@@ -35,6 +35,26 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
     window.open('https://forms.office.com/pages/responsepage.aspx?id=Byj7LZibDEy_hkyx7rBjYFZd1caLSu5IpE0W8kaPYn5URFpBS1ZSTE1CMTJISUFXSldETFpVTVRDVC4u&route=shorturl', '_blank')
   }
 
+  // Mapear estados para mostrar al cliente
+  const mapearEstadoCliente = (estado) => {
+    if (!estado) return estado
+    
+    const estadoLower = estado.toLowerCase().trim()
+    
+    // Si es "pendiente" o "en proceso", mostrar "en gestion"
+    if (estadoLower === 'pendiente' || estadoLower === 'en proceso') {
+      return 'en gestion'
+    }
+    
+    // Si es "cerrada" o "expirada", mostrar "cerrada"
+    if (estadoLower === 'cerrada' || estadoLower === 'expirada') {
+      return 'cerrada'
+    }
+    
+    // Para cualquier otro estado, mantener el original
+    return estado
+  }
+
   return (
     <div className="consultar-pqrs">
       <div className="section-header">
@@ -121,8 +141,8 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
               {searchResult.Estado && (
                 <div className="detail-item">
                   <strong>Estado:</strong>
-                  <span className={`pqrs-estado ${searchResult.Estado.toLowerCase()}`}>
-                    {searchResult.Estado}
+                  <span className={`pqrs-estado ${mapearEstadoCliente(searchResult.Estado).toLowerCase().replace(/\s+/g, '-')}`}>
+                    {mapearEstadoCliente(searchResult.Estado)}
                   </span>
                 </div>
               )}

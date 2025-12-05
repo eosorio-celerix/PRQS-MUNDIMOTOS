@@ -5,6 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_FM_API_BASE_URL || 'https://fms-dev.ce
 const DATABASE = import.meta.env.VITE_FM_DATABASE || 'PQRS-MM-QA'
 const LAYOUT = import.meta.env.VITE_FM_LAYOUT || 'PQRS'
 
+const URL_DEPLOY = import.meta.env.VITE_URL_DEPLOY || 'https://mundimotos.com/pqrs'
 // En desarrollo, usar el proxy de Vite para evitar CORS
 // El proxy redirige /fmi/* a https://fms-dev.celerix.com/fmi/*
 // En producción, usar la URL completa
@@ -243,13 +244,84 @@ const getRecordById = async (recordId) => {
         }
       }
       
+      // Verificar si el error es que el registro no se encontró
       const errorMessage = error.response?.data?.messages?.[0]?.message || 
                           error.response?.data?.message || 
                           `Error ${error.response.status}: ${error.response.statusText}`
+      
+      // Si el error indica que el registro no existe, lanzar mensaje personalizado
+      if (error.response?.status === 404 || 
+          errorMessage?.toLowerCase().includes('record is missing') ||
+          errorMessage?.toLowerCase().includes('no encontrado') ||
+          errorMessage?.toLowerCase().includes('not found')) {
+        throw new Error('No se encontró información relacionada')
+      }
+      
       throw new Error(errorMessage)
     }
     
     throw new Error(error.message || 'Error al consultar el registro')
+  }
+}
+
+/**
+ * Crear registro en la bitácora para una PQRS
+ */
+const crearRegistroBitacora = async (pqrsRecordId, token) => {
+  try {
+    const layoutBitacora = 'tblPQRSBitacora'
+    
+    const url = isDevelopment 
+      ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records`
+      : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records`
+    
+    const headers = {
+      'X-FM-Data-Session-Token': token,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    }
+    
+    const fieldData = {
+      fk_PQRS: String(pqrsRecordId),
+      Accion: 'CREADA',
+      Comentario: 'Cambio de estado automatico',
+    }
+    
+    const response = await axios.request({
+      method: 'POST',
+      url: url,
+      data: {
+        fieldData: fieldData,
+      },
+      headers: headers,
+      transformRequest: [(data) => JSON.stringify(data)],
+      validateStatus: function (status) {
+        return status < 500
+      }
+    })
+    
+    if (response.data?.response?.recordId) {
+      return {
+        success: true,
+        recordId: response.data.response.recordId,
+      }
+    }
+    
+    // Si no hay recordId, verificar si hay errores
+    if (response.status >= 400 || (response.data?.messages && response.data.messages.length > 0)) {
+      const errorMessage = response.data?.messages?.[0]?.message || 'Error al crear el registro en bitácora'
+      throw new Error(errorMessage)
+    }
+    
+    throw new Error('No se pudo crear el registro en bitácora')
+  } catch (error) {
+    if (error.response) {
+      const errorMessage = error.response?.data?.messages?.[0]?.message || 
+                          error.response?.data?.message || 
+                          'Error al crear el registro en bitácora'
+      throw new Error(errorMessage)
+    }
+    throw new Error(error.message || 'Error al crear el registro en bitácora')
   }
 }
 
@@ -283,6 +355,16 @@ export const pqrsService = {
         modId: record.modId,
       }
     } catch (error) {
+      // Si el error ya es el mensaje personalizado, mantenerlo
+      if (error.message === 'No se encontró información relacionada') {
+        throw error
+      }
+      // Si el error indica que no se encontró, usar mensaje personalizado
+      if (error.message?.toLowerCase().includes('record is missing') ||
+          error.message?.toLowerCase().includes('no encontrado') ||
+          error.message?.toLowerCase().includes('not found')) {
+        throw new Error('No se encontró información relacionada')
+      }
       throw new Error(error.message || 'Error al consultar la PQRS')
     }
   },
@@ -384,6 +466,15 @@ export const pqrsService = {
       // Verificar primero si la creación fue exitosa (hay recordId)
       if (response.data?.response?.recordId) {
         const recordId = response.data.response.recordId
+        
+        // Crear registro en la bitácora después de crear el PQRS
+        try {
+          await crearRegistroBitacora(recordId, token)
+        } catch (bitacoraError) {
+          // No lanzar error si falla la bitácora, solo loguear
+          console.error('Error al crear registro en bitácora:', bitacoraError.message)
+        }
+        
         return {
           id: recordId,
           recordId: recordId,
@@ -514,6 +605,8 @@ export const pqrsService = {
         name: nombreCompleto || '',
         email: email || '',
         radicado: radicadoStr,
+        updated: false,
+        url: URL_DEPLOY
       }
 
       console.log('Enviando email webhook:', { url: WEBHOOK_EMAIL_URL, body })
@@ -666,7 +759,158 @@ export const empleadoService = {
     }
   },
 
-  // Obtener lista de empleados disponibles para reasignación
+  // Obtener lista de sedes
+  getSedes: async (token) => {
+    try {
+      const layoutSedes = 'Sede'
+      const url = isDevelopment 
+        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutSedes}/records`
+        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutSedes}/records`
+      
+      const headers = {
+        'X-FM-Data-Session-Token': token,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+      
+      const response = await axios.get(
+        url,
+        {
+          params: {
+            _limit: 2000,
+          },
+          headers: headers,
+        }
+      )
+      
+      if (response.data?.response?.data) {
+        return response.data.response.data.map(record => ({
+          id: record.recordId,
+          recordId: record.recordId,
+          ...record.fieldData,
+        }))
+      }
+      return []
+    } catch (error) {
+      if (error.response?.status === 401 || error.response?.status === 952) {
+        throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente')
+      }
+      throw new Error(error.response?.data?.messages?.[0]?.message || 'Error al obtener sedes')
+    }
+  },
+
+  // Obtener usuarios por sede desde AsignacionUsuarioSedeTipo
+  getUsuariosPorSede: async (pk_Sede, token) => {
+    try {
+      const layoutAsignacion = 'AsignacionUsuarioSedeTipo'
+      const baseUrl = isDevelopment
+        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutAsignacion}`
+        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutAsignacion}`
+      
+      const headers = {
+        'X-FM-Data-Session-Token': token,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+      
+      // Buscar asignaciones por fk_Sede usando el pk_Sede de la sede seleccionada
+      const response = await axios.post(
+        `${baseUrl}/_find`,
+        {
+          query: [
+            {
+              fk_Sede: String(pk_Sede),
+            },
+          ],
+        },
+        { headers }
+      )
+      if (response.data?.response?.data) {
+        const asignaciones = response.data.response.data
+        
+        // Obtener información de usuarios y clases
+        const usuariosConClase = await Promise.all(
+          asignaciones.map(async (asignacion) => {
+            const fd = asignacion.fieldData || {}
+            const idUsuario = fd.fk_Empleado
+            const idClaseEmpleado = fd.IdClaseEmpleado || fd.fk_ClaseEmpleado || fd.ClaseEmpleado
+            
+            // Obtener datos del usuario desde la tabla Usuarios
+            let usuario = null
+            if (idUsuario) {
+              try {
+                const layoutUsuarios = 'Usuarios'
+                const urlUsuario = isDevelopment
+                  ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutUsuarios}/records/${idUsuario}`
+                  : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutUsuarios}/records/${idUsuario}`
+                
+                const usuarioResponse = await axios.get(urlUsuario, { headers })
+                if (usuarioResponse.data?.response?.data?.[0]) {
+                  usuario = {
+                    id: usuarioResponse.data.response.data[0].recordId,
+                    recordId: usuarioResponse.data.response.data[0].recordId,
+                    ...usuarioResponse.data.response.data[0].fieldData,
+                  }
+                }
+              } catch (err) {
+                console.warn(`Error al obtener usuario ${idUsuario}:`, err.message)
+              }
+            }
+            
+            // Obtener datos de la clase de empleado
+            let claseEmpleado = null
+            if (idClaseEmpleado) {
+              try {
+                const layoutClase = 'tblClaseEmpleado'
+                const urlClase = isDevelopment
+                  ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutClase}/records/${idClaseEmpleado}`
+                  : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutClase}/records/${idClaseEmpleado}`
+                
+                const claseResponse = await axios.get(urlClase, { headers })
+                if (claseResponse.data?.response?.data?.[0]) {
+                  claseEmpleado = {
+                    id: claseResponse.data.response.data[0].recordId,
+                    recordId: claseResponse.data.response.data[0].recordId,
+                    ...claseResponse.data.response.data[0].fieldData,
+                  }
+                }
+              } catch (err) {
+                console.warn(`Error al obtener clase empleado ${idClaseEmpleado}:`, err.message)
+              }
+            }
+            
+            return {
+              ...usuario,
+              claseEmpleado: claseEmpleado ? {
+                nombre: claseEmpleado.Nombre || claseEmpleado.nombre || '',
+                descripcion: claseEmpleado.Descripcion || claseEmpleado.descripcion || '',
+              } : null,
+            }
+          })
+        )
+        
+        // Filtrar empleados nulos y eliminar duplicados
+        const usuariosUnicos = new Map()
+        usuariosConClase
+          .filter(usuario => usuario && usuario.recordId)
+          .forEach(usuario => {
+            if (!usuariosUnicos.has(usuario.recordId)) {
+              usuariosUnicos.set(usuario.recordId, usuario)
+            }
+          })
+        
+        return Array.from(usuariosUnicos.values())
+      }
+      return []
+    } catch (error) {
+      if (error.response?.status === 401 || error.response?.status === 952) {
+        throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente')
+      }
+      throw new Error(error.response?.data?.messages?.[0]?.message || 'Error al obtener usuarios por sede')
+    }
+  },
+
+  // Obtener lista de empleados disponibles para reasignación (mantener para compatibilidad)
   getUsuariosDisponibles: async (token) => {
     try {
       // Buscar en la tabla de empleados
@@ -707,6 +951,107 @@ export const empleadoService = {
     }
   },
 
+  // Agregar comentario a la bitácora de una PQRS
+  agregarComentarioBitacora: async (pqrsRecordId, comentario, token) => {
+    try {
+      const layoutBitacora = 'tblPQRSBitacora'
+      
+      const url = isDevelopment 
+        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records`
+        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records`
+      
+      const headers = {
+        'X-FM-Data-Session-Token': token,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+      
+      const fieldData = {
+        fk_PQRS: String(pqrsRecordId),
+        Accion: 'Comentario',
+        Comentario: comentario || '',
+      }
+      
+      const response = await axios.request({
+        method: 'POST',
+        url: url,
+        data: {
+          fieldData: fieldData,
+        },
+        headers: headers,
+        transformRequest: [(data) => JSON.stringify(data)],
+        validateStatus: function (status) {
+          return status < 500
+        }
+      })
+      
+      if (response.data?.response?.recordId) {
+        return {
+          success: true,
+          recordId: response.data.response.recordId,
+        }
+      }
+      
+      // Si no hay recordId, verificar si hay errores
+      if (response.status >= 400 || (response.data?.messages && response.data.messages.length > 0)) {
+        const errorMessage = response.data?.messages?.[0]?.message || 'Error al agregar comentario en bitácora'
+        throw new Error(errorMessage)
+      }
+      
+      throw new Error('No se pudo agregar el comentario en bitácora')
+    } catch (error) {
+      if (error.response?.status === 401 || error.response?.status === 952) {
+        throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente')
+      }
+      throw new Error(error.response?.data?.messages?.[0]?.message || 'Error al agregar comentario en bitácora')
+    }
+  },
+
+  // Enviar email de comentario al cliente mediante webhook
+  enviarEmailComentario: async (nombreCompleto, email, radicado, comentario) => {
+    try {
+      if (!API_KEY_WEBHOOK_EMAIL) {
+        console.warn('API_KEY_WEBHOOK_EMAIL no configurada')
+        return { success: false, message: 'API_KEY_WEBHOOK_EMAIL no configurada' }
+      }
+
+      if (!WEBHOOK_EMAIL_URL) {
+        console.warn('WEBHOOK_EMAIL_URL no configurada')
+        return { success: false, message: 'WEBHOOK_EMAIL_URL no configurada' }
+      }
+
+      const radicadoStr = String(radicado || '')
+
+      const body = {
+        name: nombreCompleto || '',
+        email: email || '',
+        radicado: radicadoStr,
+        comentario: comentario || '',
+        updated: true,
+        url: URL_DEPLOY
+      }
+
+      const response = await axios.post(
+        WEBHOOK_EMAIL_URL,
+        body,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': API_KEY_WEBHOOK_EMAIL,
+          },
+        }
+      )
+
+      return { success: true, data: response.data }
+    } catch (error) {
+      console.error('Error al enviar email webhook:', error.response?.data || error.message)
+      return { 
+        success: false, 
+        message: error.response?.data?.message || error.message || 'Error al enviar email' 
+      }
+    }
+  },
+
   // Obtener historial de una PQRS desde la tabla tblPQRSBitacora
   getHistorialPQRS: async (recordId, token) => {
     try {
@@ -741,20 +1086,29 @@ export const empleadoService = {
         // Normalizar los registros de historial
         return response.data.response.data.map((record) => {
           const fd = record.fieldData || {}
+          
+          // Mapear acciones a texto legible
+          const mapeoAcciones = {
+            'EstadoCambio': 'Cambio de estado',
+          }
+          
+          const accionOriginal = fd.Accion || 'Cambio'
+          const accionMapeada = mapeoAcciones[accionOriginal] || accionOriginal
+          
           return {
             id: record.recordId,
             recordId: record.recordId,
-            // Fecha del movimiento en bitácora
+            // Fecha del movimiento en bitácora (priorizar fecha de creación)
             fecha:
-              fd.ModificationTimestamp ||
               fd.CreationTimestamp ||
               fd.FechaCreacion ||
               fd.FechaEvento ||
+              fd.ModificationTimestamp ||
               null,
-            // Acción o movimiento registrado en bitácora
-            accion: 
-              fd.Accion || 
-              'Cambio',
+            // Acción o movimiento registrado en bitácora (mapeada)
+            accion: accionMapeada,
+            // Comentario del registro
+            comentario: fd.Comentario || null,
             // Usuario que realizó el cambio
             usuario:
               fd.ModifiedBy ||

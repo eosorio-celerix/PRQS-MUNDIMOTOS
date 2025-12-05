@@ -290,6 +290,11 @@
   color: #2e7d32;
 }
 
+.pqrs-estado.en-gestion {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
 .pqrs-estado.abierta,
 .pqrs-estado.en_proceso {
   background: #fff3e0;
