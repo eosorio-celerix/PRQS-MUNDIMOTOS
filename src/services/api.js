@@ -30,6 +30,10 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Configuración para CORS en producción
+  withCredentials: false,
+  // Timeout para evitar que las peticiones se queden colgadas
+  timeout: 30000,
 })
 
 // Interceptor para manejar errores
@@ -75,6 +79,8 @@ const getSessionToken = async () => {
         'Authorization': authHeader,
         'Content-Type': 'application/json',
       },
+      // Configuración para CORS
+      withCredentials: false,
       // Asegurar que axios no modifique la petición
       transformRequest: [(data) => JSON.stringify(data)],
       // Asegurar que los headers se envíen
