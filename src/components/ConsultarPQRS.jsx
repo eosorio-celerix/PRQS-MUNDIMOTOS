@@ -7,6 +7,8 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
   const [error, setError] = useState(null)
   const [searchId, setSearchId] = useState('')
   const [searchResult, setSearchResult] = useState(null)
+  const [archivos, setArchivos] = useState([])
+  const [subiendoArchivos, setSubiendoArchivos] = useState(false)
 
   const handleSearchById = useCallback(async (idToSearch = null) => {
     const searchValue = idToSearch || searchId
@@ -33,6 +35,66 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
   const handleCalificarServicio = () => {
     // Redirigir a la URL de calificación
     window.open('https://forms.office.com/pages/responsepage.aspx?id=Byj7LZibDEy_hkyx7rBjYFZd1caLSu5IpE0W8kaPYn5URFpBS1ZSTE1CMTJISUFXSldETFpVTVRDVC4u&route=shorturl', '_blank')
+  }
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files)
+    setArchivos(prev => [...prev, ...files])
+    if (error) setError(null)
+  }
+
+  const handleRemoveFile = (index) => {
+    setArchivos(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  }
+
+  const handleSubirArchivos = async () => {
+    if (!searchResult || archivos.length === 0) return
+
+    setSubiendoArchivos(true)
+    setError(null)
+
+    try {
+      const recordId = searchResult.recordId || searchResult.RecordID || searchResult.id
+      const resultados = await pqrsService.subirAdjuntosPQRS(recordId, archivos)
+      
+      // Verificar si hubo errores
+      const errores = resultados.filter(r => !r.success)
+      if (errores.length > 0) {
+        const mensajesError = errores.map(e => `${e.nombre}: ${e.error}`).join(', ')
+        setError(`Algunos archivos no se pudieron subir: ${mensajesError}`)
+      } else {
+        // Todos los archivos se subieron correctamente
+        setError(null)
+        setArchivos([])
+        // Mostrar mensaje de éxito temporal
+        const mensajeExito = document.createElement('div')
+        mensajeExito.className = 'alert alert-success'
+        mensajeExito.innerHTML = '✅ Archivos adjuntados exitosamente'
+        mensajeExito.style.position = 'fixed'
+        mensajeExito.style.top = '20px'
+        mensajeExito.style.right = '20px'
+        mensajeExito.style.zIndex = '9999'
+        mensajeExito.style.padding = '1rem'
+        mensajeExito.style.borderRadius = '8px'
+        mensajeExito.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'
+        document.body.appendChild(mensajeExito)
+        setTimeout(() => {
+          document.body.removeChild(mensajeExito)
+        }, 3000)
+      }
+    } catch (err) {
+      setError(err.message || 'Error al subir los archivos')
+    } finally {
+      setSubiendoArchivos(false)
+    }
   }
 
   // Mapear estados para mostrar al cliente
@@ -199,6 +261,68 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
                   {searchResult.Sede && (
                     <div className="detail-field">
                       <strong>Sede:</strong> {searchResult.Sede}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sección de Adjuntar Documentos */}
+              <div className="detail-section">
+                <h4>Adjuntar Documentos</h4>
+                <p className="section-subtitle">Puedes adjuntar documentos adicionales relacionados con tu PQRS</p>
+                
+                <div className="form-group">
+                  <label htmlFor="archivos-consulta" className="file-upload-label">
+                    <span className="file-upload-icon">📎</span>
+                    Seleccionar archivos
+                    <input
+                      id="archivos-consulta"
+                      type="file"
+                      multiple
+                      onChange={handleFileChange}
+                      className="file-input"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.xls,.xlsx"
+                      disabled={subiendoArchivos}
+                    />
+                  </label>
+                  <p className="file-hint">
+                    Formatos permitidos: PDF, Word, Excel, Imágenes (JPG, PNG, GIF). Tamaño máximo: 10MB por archivo.
+                  </p>
+
+                  {archivos.length > 0 && (
+                    <div className="archivos-list">
+                      <h5>Archivos seleccionados ({archivos.length}):</h5>
+                      {archivos.map((archivo, index) => (
+                        <div key={index} className="archivo-item">
+                          <span className="archivo-icon">
+                            {archivo.type?.includes('pdf') ? '📄' : 
+                             archivo.type?.includes('image') ? '🖼️' : 
+                             archivo.type?.includes('word') || archivo.type?.includes('document') ? '📝' :
+                             archivo.type?.includes('excel') || archivo.type?.includes('spreadsheet') ? '📊' : '📎'}
+                          </span>
+                          <div className="archivo-info">
+                            <span className="archivo-nombre">{archivo.name}</span>
+                            <span className="archivo-tamaño">{formatFileSize(archivo.size)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-remove-file"
+                            onClick={() => handleRemoveFile(index)}
+                            title="Eliminar archivo"
+                            disabled={subiendoArchivos}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn-subir-archivos"
+                        onClick={handleSubirArchivos}
+                        disabled={subiendoArchivos || archivos.length === 0}
+                      >
+                        {subiendoArchivos ? 'Subiendo...' : '📤 Subir Archivos'}
+                      </button>
                     </div>
                   )}
                 </div>

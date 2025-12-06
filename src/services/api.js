@@ -763,6 +763,21 @@ export const pqrsService = {
       }
     }
   },
+
+  // Subir archivos adjuntos a una PQRS existente (público, usa token de sesión básico)
+  subirAdjuntosPQRS: async (pqrsRecordId, archivos) => {
+    try {
+      const token = await getSessionToken()
+      
+      if (!token) {
+        throw new Error('No se pudo obtener el token de sesión')
+      }
+      
+      return await subirArchivosAdjuntos(pqrsRecordId, archivos, token)
+    } catch (error) {
+      throw new Error(error.message || 'Error al subir archivos adjuntos')
+    }
+  },
 }
 
 // Servicio de autenticación de empleados

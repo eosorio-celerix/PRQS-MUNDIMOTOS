@@ -64,26 +64,55 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     }
   }
 
-  // Calcular totales por estado
-  const calcularTotales = () => {
-    const totales = {
-      Todos: allPQRS.length,
-      Pendiente: 0,
-      'En Proceso': 0,
-      Resuelta: 0,
-      Cerrada: 0,
-      'Sin asignar': 0
-    }
-
+  // Obtener todos los estados únicos de las PQRS
+  const obtenerEstadosUnicos = () => {
+    const estadosSet = new Set()
+    
     allPQRS.forEach(pqrs => {
       const estado = pqrs.Estado || pqrs.estado || ''
-      if (estado === 'Pendiente') totales.Pendiente++
-      else if (estado === 'En Proceso') totales['En Proceso']++
-      else if (estado === 'Resuelta') totales.Resuelta++
-      else if (estado === 'Cerrada') totales.Cerrada++
+      if (estado && estado.trim() !== '') {
+        estadosSet.add(estado)
+      }
+    })
+    
+    // Convertir a array y ordenar
+    const estados = Array.from(estadosSet).sort()
+    
+    // Agregar "Sin asignar" si hay PQRS sin asignar
+    const tieneSinAsignar = allPQRS.some(pqrs => !pqrs.fk_Empleado && !pqrs.Asignado_a && !pqrs.asignado_a)
+    if (tieneSinAsignar) {
+      estados.push('Sin asignar')
+    }
+    
+    return estados
+  }
+
+  // Calcular totales por estado
+  const calcularTotales = () => {
+    const estados = obtenerEstadosUnicos()
+    const totales = {
+      Todos: allPQRS.length
+    }
+
+    // Inicializar contadores para cada estado
+    estados.forEach(estado => {
+      totales[estado] = 0
+    })
+
+    // Contar PQRS por estado
+    allPQRS.forEach(pqrs => {
+      const estado = pqrs.Estado || pqrs.estado || ''
+      if (estado && estado.trim() !== '') {
+        if (totales[estado] !== undefined) {
+          totales[estado]++
+        }
+      }
       
-      if (!pqrs.Asignado_a && !pqrs.asignado_a) {
-        totales['Sin asignar']++
+      // Contar "Sin asignar"
+      if (!pqrs.fk_Empleado && !pqrs.Asignado_a && !pqrs.asignado_a) {
+        if (totales['Sin asignar'] !== undefined) {
+          totales['Sin asignar']++
+        }
       }
     })
 
@@ -97,15 +126,13 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
 
   // Obtener mensaje cuando no hay registros según el filtro
   const obtenerMensajeVacio = () => {
-    const mensajes = {
-      'Todos': 'No hay PQRS registradas',
-      'Pendiente': 'No hay PQRS pendientes',
-      'En Proceso': 'No hay PQRS en proceso',
-      'Resuelta': 'No hay PQRS resueltas',
-      'Cerrada': 'No hay PQRS cerradas',
-      'Sin asignar': 'No hay PQRS sin asignar'
+    if (filtroEstado === 'Todos') {
+      return 'No hay PQRS registradas'
+    } else if (filtroEstado === 'Sin asignar') {
+      return 'No hay PQRS sin asignar'
+    } else {
+      return `No hay PQRS con estado "${filtroEstado}"`
     }
-    return mensajes[filtroEstado] || 'No hay PQRS para mostrar'
   }
 
   // Ordenar lista por fecha
@@ -647,10 +674,9 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                     className="select-estado"
                     disabled={actualizando}
                   >
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="En Proceso">En Proceso</option>
-                    <option value="Resuelta">Resuelta</option>
-                    <option value="Cerrada">Cerrada</option>
+                    {obtenerEstadosUnicos().filter(estado => estado !== 'Sin asignar').map(estado => (
+                      <option key={estado} value={estado}>{estado}</option>
+                    ))}
                   </select>
                 </div>
               </div>
