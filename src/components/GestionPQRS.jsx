@@ -270,8 +270,21 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     }
   }
 
+  // Verificar si el estado es cerrada
+  const esEstadoCerrada = (estado) => {
+    if (!estado) return false
+    const estadoLower = estado.toLowerCase().trim()
+    return estadoLower === 'cerrada' || estadoLower === 'expirada'
+  }
+
   const handleActualizarEstado = (nuevoEstado) => {
     if (!selectedPQRS || !token) return
+    
+    // No permitir cambiar estado si está cerrada
+    const estadoActual = selectedPQRS.Estado || selectedPQRS.estado || ''
+    if (esEstadoCerrada(estadoActual)) {
+      return
+    }
     
     // Guardar el estado y abrir modal de comentario
     setEstadoPendiente(nuevoEstado)
@@ -282,6 +295,12 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
 
   const handleReasignar = async (recordId, usuario) => {
     if (!token || !selectedPQRS) return
+    
+    // No permitir reasignar si el estado es cerrada
+    const estadoActual = selectedPQRS.Estado || selectedPQRS.estado || ''
+    if (esEstadoCerrada(estadoActual)) {
+      return
+    }
     
     setActualizando(true)
     setError(null)
@@ -463,6 +482,13 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
       alert('Por favor, seleccione una PQRS primero')
       return
     }
+    
+    // No permitir agregar comentarios si el estado es cerrada
+    const estadoActual = selectedPQRS.Estado || selectedPQRS.estado || ''
+    if (esEstadoCerrada(estadoActual)) {
+      return
+    }
+    
     setModalComentarioContexto(null)
     setModalComentarioTitulo('Agregar Comentario')
     setShowModalComentario(true)
@@ -663,8 +689,12 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                 <div className="detail-actions">
                   <button
                     className="btn-reasignar-header"
-                    onClick={() => setShowModalReasignar(true)}
-                    disabled={actualizando}
+                    onClick={() => {
+                      if (!esEstadoCerrada(selectedPQRS.Estado || selectedPQRS.estado)) {
+                        setShowModalReasignar(true)
+                      }
+                    }}
+                    disabled={actualizando || esEstadoCerrada(selectedPQRS.Estado || selectedPQRS.estado)}
                   >
                     Reasignar
                   </button>
@@ -672,7 +702,7 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                     value={selectedPQRS.Estado || selectedPQRS.estado || ''}
                     onChange={(e) => handleActualizarEstado(e.target.value)}
                     className="select-estado"
-                    disabled={actualizando}
+                    disabled={actualizando || esEstadoCerrada(selectedPQRS.Estado || selectedPQRS.estado)}
                   >
                     {obtenerEstadosUnicos().filter(estado => estado !== 'Sin asignar').map(estado => (
                       <option key={estado} value={estado}>{estado}</option>
@@ -932,8 +962,8 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
         accionContexto={modalComentarioContexto}
       />
 
-      {/* Botón flotante para agregar comentario */}
-      {selectedPQRS && (
+      {/* Botón flotante para agregar comentario - Solo si el estado no es cerrada */}
+      {selectedPQRS && !esEstadoCerrada(selectedPQRS.Estado || selectedPQRS.estado) && (
         <button
           className="btn-flotante-comentario"
           onClick={handleAbrirModalComentario}
