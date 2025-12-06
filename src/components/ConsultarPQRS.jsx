@@ -266,7 +266,8 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
                 </div>
               </div>
 
-              {/* Sección de Adjuntar Documentos */}
+              {/* Sección de Adjuntar Documentos - Solo si el estado no es "cerrada" */}
+              {searchResult.Estado && mapearEstadoCliente(searchResult.Estado).toLowerCase() !== 'cerrada' && (
               <div className="detail-section">
                 <h4>Adjuntar Documentos</h4>
                 <p className="section-subtitle">Puedes adjuntar documentos adicionales relacionados con tu PQRS</p>
@@ -327,6 +328,7 @@ const ConsultarPQRS = ({ successMessage, createdRecordId, onClearSuccess }) => {
                   )}
                 </div>
               </div>
+              )}
             </div>
           </div>
         </div>
