@@ -510,9 +510,9 @@ export const pqrsService = {
         Telefono_contacto: data.telefono ? Number(data.telefono) : '',
         
         // Información de compra (opcional)
-        Fecha_compra: data.fechaCompra ? formatDate(data.fechaCompra) : '',
-        No_factura: data.numeroFactura || '',
-        Area_pqrs: data.areaDirigida ? (areaMap[data.areaDirigida] || data.areaDirigida) : '',
+        // Solo incluir si tienen valor
+        ...(data.fechaCompra ? { Fecha_compra: formatDate(data.fechaCompra) } : {}),
+        ...(data.numeroFactura ? { No_factura: data.numeroFactura } : {}),
         
         // Descripción
         Descripcion_pqrs: data.descripcion || '',
