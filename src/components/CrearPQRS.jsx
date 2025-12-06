@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { pqrsService } from '../services/api'
 import './CrearPQRS.css'
 
@@ -22,6 +22,8 @@ const CrearPQRS = ({ onSuccess }) => {
   const [error, setError] = useState(null)
   const [showTipoInfo, setShowTipoInfo] = useState(false)
   const [archivos, setArchivos] = useState([])
+  const [sedes, setSedes] = useState([])
+  const [loadingSedes, setLoadingSedes] = useState(false)
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -62,6 +64,29 @@ const CrearPQRS = ({ onSuccess }) => {
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
+
+  // Cargar sedes al montar el componente
+  useEffect(() => {
+    const cargarSedes = async () => {
+      setLoadingSedes(true)
+      try {
+        const listaSedes = await pqrsService.getSedes()
+        // Ordenar sedes por nombre
+        const sedesOrdenadas = listaSedes.sort((a, b) => {
+          const nombreA = (a.Sede || a.sede || a.Nombre || a.nombre || '').toLowerCase()
+          const nombreB = (b.Sede || b.sede || b.Nombre || b.nombre || '').toLowerCase()
+          return nombreA.localeCompare(nombreB)
+        })
+        setSedes(sedesOrdenadas)
+      } catch (err) {
+        console.error('Error al cargar sedes:', err)
+        // No mostrar error al usuario, solo dejar la lista vacía
+      } finally {
+        setLoadingSedes(false)
+      }
+    }
+    cargarSedes()
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -380,11 +405,14 @@ const CrearPQRS = ({ onSuccess }) => {
                 value={formData.dondeCompro}
                 onChange={handleChange}
                 className="form-input"
+                disabled={loadingSedes}
               >
-                <option value="">Selecciona una opción</option>
-                <option value="tienda_fisica">Tienda física</option>
-                <option value="tienda_online">Tienda online</option>
-                <option value="ambos">Ambos</option>
+                <option value="">{loadingSedes ? 'Cargando sedes...' : 'Selecciona una sede'}</option>
+                {sedes.map((sede) => (
+                  <option key={sede.recordId || sede.id} value={sede.Sede || sede.sede || sede.Nombre || sede.nombre || ''}>
+                    {sede.Sede || sede.sede || sede.Nombre || sede.nombre || 'Sin nombre'}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -400,9 +428,9 @@ const CrearPQRS = ({ onSuccess }) => {
                 className="form-input"
               >
                 <option value="">Selecciona una opción</option>
-                <option value="servicio_cliente">Servicio al cliente</option>
-                <option value="garantia">Garantía</option>
-                <option value="cambio_devolucion">Cambio o devolución</option>
+                <option value="SERVICIO AL CLIENTE">Servicio al cliente</option>
+                <option value="GARANTIA">Garantía</option>
+                <option value="CAMBIO O DEVOLUCION">Cambio o devolución</option>
               </select>
             </div>
           </div>

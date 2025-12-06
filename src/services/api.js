@@ -519,6 +519,8 @@ export const pqrsService = {
         // Solo incluir si tienen valor
         ...(data.fechaCompra ? { Fecha_compra: formatDate(data.fechaCompra) } : {}),
         ...(data.numeroFactura ? { No_factura: data.numeroFactura } : {}),
+        ...(data.dondeCompro ? { Sede: data.dondeCompro } : {}),
+       // ...(data.areaDirigida ? { Area_pqrs: data.areaDirigida } : {}),
         
         // Descripción
         Descripcion_pqrs: data.descripcion || '',
@@ -782,6 +784,49 @@ export const pqrsService = {
       return await subirArchivosAdjuntos(pqrsRecordId, archivos, token)
     } catch (error) {
       throw new Error(error.message || 'Error al subir archivos adjuntos')
+    }
+  },
+
+  // Obtener lista de sedes (público, usa token de sesión básico)
+  getSedes: async () => {
+    try {
+      const token = await getSessionToken()
+      
+      if (!token) {
+        throw new Error('No se pudo obtener el token de sesión')
+      }
+      
+      const layoutSedes = 'Sede'
+      const url = isDevelopment 
+        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutSedes}/records`
+        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutSedes}/records`
+      
+      const headers = {
+        'X-FM-Data-Session-Token': token,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+      
+      const response = await axios.get(
+        url,
+        {
+          params: {
+            _limit: 2000,
+          },
+          headers: headers,
+        }
+      )
+      
+      if (response.data?.response?.data) {
+        return response.data.response.data.map(record => ({
+          id: record.recordId,
+          recordId: record.recordId,
+          ...record.fieldData,
+        }))
+      }
+      return []
+    } catch (error) {
+      throw new Error(error.message || 'Error al obtener sedes')
     }
   },
 }
