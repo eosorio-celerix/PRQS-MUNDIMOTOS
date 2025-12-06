@@ -364,6 +364,46 @@ const subirArchivosAdjuntos = async (pqrsRecordId, archivos, token) => {
 }
 
 /**
+ * Ejecutar un script de FileMaker
+ * En FileMaker Data API, los scripts se ejecutan como parte de una operación GET en un layout
+ */
+const ejecutarScript = async (scriptName, layout, scriptParam, token) => {
+  try {
+    // En FileMaker Data API, los scripts se ejecutan usando GET con el parámetro script en la query string
+    const url = isDevelopment 
+      ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layout}/script/${scriptName}`
+      : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layout}/script/${scriptName}`
+    
+    const headers = {
+      'X-FM-Data-Session-Token': token,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    }
+    
+    // Construir los parámetros de la query string
+    const params = {}
+    if (scriptParam) {
+      params['script.param'] = String(scriptParam)
+    }
+    
+    const response = await axios.request({
+      method: 'GET',
+      url: url,
+      params: params,
+      headers: headers,
+      validateStatus: function (status) {
+        return status < 500
+      }
+    })
+    
+    return response.data
+  } catch (error) {
+    console.error('Error al ejecutar script:', error.response?.data || error.message)
+    throw new Error(error.response?.data?.messages?.[0]?.message || error.message || 'Error al ejecutar el script')
+  }
+}
+
+/**
  * Crear registro en la bitácora para una PQRS
  */
 const crearRegistroBitacora = async (pqrsRecordId, token) => {
@@ -488,9 +528,9 @@ export const pqrsService = {
       
       // Mapeo de áreas
       const areaMap = {
-        'servicio_cliente': 'Servicio al cliente',
-        'garantia': 'Garantía',
-        'cambio_devolucion': 'Cambio o devolución'
+        'SERVICIO AL CLIENTE': 'Servicio al cliente',
+        'GARANTÍA': 'Garantía',
+        'CAMBIO O DEVOLUCIÓN': 'Cambio o devolución'
       }
       
       // Función para convertir fecha de YYYY-MM-DD a MM/DD/YYYY
@@ -520,7 +560,7 @@ export const pqrsService = {
         ...(data.fechaCompra ? { Fecha_compra: formatDate(data.fechaCompra) } : {}),
         ...(data.numeroFactura ? { No_factura: data.numeroFactura } : {}),
         ...(data.dondeCompro ? { Sede: data.dondeCompro } : {}),
-       // ...(data.areaDirigida ? { Area_pqrs: data.areaDirigida } : {}),
+        ...(data.areaDirigida ? { fk_ClaseSolicitud: data.areaDirigida } : {}),
         
         // Descripción
         Descripcion_pqrs: data.descripcion || '',
@@ -597,6 +637,17 @@ export const pqrsService = {
         } catch (bitacoraError) {
           // No lanzar error si falla la bitácora, solo loguear
           console.error('Error al crear registro en bitácora:', bitacoraError.message)
+        }
+        
+        // Ejecutar script de asignación inicial después de crear el PQRS
+        try {
+          // Ejecutar el script AsignacionInicialTodaPQRS
+          // Pasar el recordId como parámetro del script
+          await ejecutarScript('AsignacionInicialTodaPQRS', LAYOUT, String(recordId), token)
+          console.log('Script AsignacionInicialTodaPQRS ejecutado exitosamente para PQRS:', recordId)
+        } catch (scriptError) {
+          // No lanzar error si falla el script, solo loguear
+          console.error('Error al ejecutar script AsignacionInicialTodaPQRS:', scriptError.message)
         }
         
         return {

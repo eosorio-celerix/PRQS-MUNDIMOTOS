@@ -650,9 +650,14 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                         const estado = (pqrs.Estado || pqrs.estado || '').toLowerCase()
                         if (estado === 'cerrada') return null
                         
-                        const fechaCreacion = pqrs.Fecha_creacion || pqrs.CreationTimestamp || pqrs.fechaCreacion
-                        const diasRestantes = calcularDiasRestantes(fechaCreacion)
-                        if (diasRestantes === null) return null
+                        // Usar el atributo Dias_habiles_restantes del PQRS
+                        const diasRestantes = pqrs.Dias_habiles_restantes !== undefined && pqrs.Dias_habiles_restantes !== null
+                          ? Number(pqrs.Dias_habiles_restantes)
+                          : (pqrs.dias_habiles_restantes !== undefined && pqrs.dias_habiles_restantes !== null
+                            ? Number(pqrs.dias_habiles_restantes)
+                            : null)
+                        
+                        if (diasRestantes === null || isNaN(diasRestantes)) return null
                         
                         const claseDias = obtenerClaseDiasRestantes(diasRestantes)
                         const texto = diasRestantes < 0 

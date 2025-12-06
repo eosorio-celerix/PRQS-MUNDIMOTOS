@@ -124,6 +124,31 @@ const CrearPQRS = ({ onSuccess }) => {
       return
     }
 
+    // Validación de campos de información de compra (obligatorios)
+    if (!formData.fechaCompra.trim()) {
+      setError('Por favor ingrese la fecha de compra')
+      setLoading(false)
+      return
+    }
+
+    if (!formData.numeroFactura.trim()) {
+      setError('Por favor ingrese el número de factura')
+      setLoading(false)
+      return
+    }
+
+    if (!formData.dondeCompro.trim()) {
+      setError('Por favor seleccione dónde compró sus productos')
+      setLoading(false)
+      return
+    }
+
+    if (!formData.areaDirigida.trim()) {
+      setError('Por favor seleccione a qué área está dirigida su solicitud')
+      setLoading(false)
+      return
+    }
+
     if (!formData.descripcion.trim()) {
       setError('Por favor describa su PQRSF con más detalle')
       setLoading(false)
@@ -360,13 +385,13 @@ const CrearPQRS = ({ onSuccess }) => {
         <div className="form-section">
           <div className="section-header">
             <h3>3. Información de Compra</h3>
-            <span className="section-subtitle">Datos relacionados con tu compra (opcional)</span>
+            <span className="section-subtitle">Datos relacionados con tu compra</span>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="fechaCompra">
-                <span className="optional">(Opcional)</span> Fecha de compra
+                <span className="required">*</span> Fecha de compra
               </label>
               <input
                 type="date"
@@ -375,12 +400,13 @@ const CrearPQRS = ({ onSuccess }) => {
                 value={formData.fechaCompra}
                 onChange={handleChange}
                 className="form-input"
+                required
               />
             </div>
 
             <div className="form-group">
               <label htmlFor="numeroFactura">
-                <span className="optional">(Opcional)</span> Número de factura
+                <span className="required">*</span> Número de factura
               </label>
               <input
                 type="text"
@@ -390,6 +416,7 @@ const CrearPQRS = ({ onSuccess }) => {
                 onChange={handleChange}
                 placeholder="Ej: FV8111976"
                 className="form-input"
+                required
               />
             </div>
           </div>
@@ -397,7 +424,7 @@ const CrearPQRS = ({ onSuccess }) => {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="dondeCompro">
-                <span className="optional">(Opcional)</span> ¿Dónde compraste tus productos?
+                <span className="required">*</span> ¿Dónde compraste tus productos?
               </label>
               <select
                 id="dondeCompro"
@@ -406,6 +433,7 @@ const CrearPQRS = ({ onSuccess }) => {
                 onChange={handleChange}
                 className="form-input"
                 disabled={loadingSedes}
+                required
               >
                 <option value="">{loadingSedes ? 'Cargando sedes...' : 'Selecciona una sede'}</option>
                 {sedes.map((sede) => (
@@ -418,7 +446,7 @@ const CrearPQRS = ({ onSuccess }) => {
 
             <div className="form-group">
               <label htmlFor="areaDirigida">
-                <span className="optional">(Opcional)</span> ¿A qué área está dirigida?
+                <span className="required">*</span> ¿A qué área está dirigida?
               </label>
               <select
                 id="areaDirigida"
@@ -426,11 +454,12 @@ const CrearPQRS = ({ onSuccess }) => {
                 value={formData.areaDirigida}
                 onChange={handleChange}
                 className="form-input"
+                required
               >
                 <option value="">Selecciona una opción</option>
-                <option value="SERVICIO AL CLIENTE">Servicio al cliente</option>
-                <option value="GARANTIA">Garantía</option>
-                <option value="CAMBIO O DEVOLUCION">Cambio o devolución</option>
+                <option value="TS02">Servicio al cliente</option>
+                <option value="TS01">Garantía</option>
+                <option value="TS03">Cambio o devolución</option>
               </select>
             </div>
           </div>
