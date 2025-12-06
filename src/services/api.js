@@ -928,13 +928,13 @@ export const empleadoService = {
     }
   },
 
-  // Obtener usuarios por sede desde AsignacionUsuarioSedeTipo
+  // Obtener usuarios por sede desde la tabla Empleados
   getUsuariosPorSede: async (pk_Sede, token) => {
     try {
-      const layoutAsignacion = 'AsignacionUsuarioSedeTipo'
+      const layoutEmpleados = 'Empleado'
       const baseUrl = isDevelopment
-        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutAsignacion}`
-        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutAsignacion}`
+        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutEmpleados}`
+        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutEmpleados}`
       
       const headers = {
         'X-FM-Data-Session-Token': token,
@@ -942,93 +942,27 @@ export const empleadoService = {
         'Content-Type': 'application/json',
       }
       
-      // Buscar asignaciones por fk_Sede usando el pk_Sede de la sede seleccionada
+      // Buscar empleados por fk_sede usando el pk_Sede de la sede seleccionada
       const response = await axios.post(
         `${baseUrl}/_find`,
         {
           query: [
             {
-              fk_Sede: String(pk_Sede),
+              fk_sede: String(pk_Sede),
             },
           ],
         },
         { headers }
       )
+      
       if (response.data?.response?.data) {
-        const asignaciones = response.data.response.data
+        const empleados = response.data.response.data.map(record => ({
+          id: record.recordId,
+          recordId: record.recordId,
+          ...record.fieldData,
+        }))
         
-        // Obtener información de usuarios y clases
-        const usuariosConClase = await Promise.all(
-          asignaciones.map(async (asignacion) => {
-            const fd = asignacion.fieldData || {}
-            const idUsuario = fd.fk_Empleado
-            const idClaseEmpleado = fd.IdClaseEmpleado || fd.fk_ClaseEmpleado || fd.ClaseEmpleado
-            
-            // Obtener datos del usuario desde la tabla Usuarios
-            let usuario = null
-            if (idUsuario) {
-              try {
-                const layoutUsuarios = 'Usuarios'
-                const urlUsuario = isDevelopment
-                  ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutUsuarios}/records/${idUsuario}`
-                  : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutUsuarios}/records/${idUsuario}`
-                
-                const usuarioResponse = await axios.get(urlUsuario, { headers })
-                if (usuarioResponse.data?.response?.data?.[0]) {
-                  usuario = {
-                    id: usuarioResponse.data.response.data[0].recordId,
-                    recordId: usuarioResponse.data.response.data[0].recordId,
-                    ...usuarioResponse.data.response.data[0].fieldData,
-                  }
-                }
-              } catch (err) {
-                console.warn(`Error al obtener usuario ${idUsuario}:`, err.message)
-              }
-            }
-            
-            // Obtener datos de la clase de empleado
-            let claseEmpleado = null
-            if (idClaseEmpleado) {
-              try {
-                const layoutClase = 'tblClaseEmpleado'
-                const urlClase = isDevelopment
-                  ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutClase}/records/${idClaseEmpleado}`
-                  : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutClase}/records/${idClaseEmpleado}`
-                
-                const claseResponse = await axios.get(urlClase, { headers })
-                if (claseResponse.data?.response?.data?.[0]) {
-                  claseEmpleado = {
-                    id: claseResponse.data.response.data[0].recordId,
-                    recordId: claseResponse.data.response.data[0].recordId,
-                    ...claseResponse.data.response.data[0].fieldData,
-                  }
-                }
-              } catch (err) {
-                console.warn(`Error al obtener clase empleado ${idClaseEmpleado}:`, err.message)
-              }
-            }
-            
-            return {
-              ...usuario,
-              claseEmpleado: claseEmpleado ? {
-                nombre: claseEmpleado.Nombre || claseEmpleado.nombre || '',
-                descripcion: claseEmpleado.Descripcion || claseEmpleado.descripcion || '',
-              } : null,
-            }
-          })
-        )
-        
-        // Filtrar empleados nulos y eliminar duplicados
-        const usuariosUnicos = new Map()
-        usuariosConClase
-          .filter(usuario => usuario && usuario.recordId)
-          .forEach(usuario => {
-            if (!usuariosUnicos.has(usuario.recordId)) {
-              usuariosUnicos.set(usuario.recordId, usuario)
-            }
-          })
-        
-        return Array.from(usuariosUnicos.values())
+        return empleados
       }
       return []
     } catch (error) {

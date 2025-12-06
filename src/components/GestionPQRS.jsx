@@ -253,15 +253,44 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     setShowModalComentario(true)
   }
 
-  const handleReasignar = (recordId, usuario) => {
-    if (!token) return
+  const handleReasignar = async (recordId, usuario) => {
+    if (!token || !selectedPQRS) return
     
-    // Guardar el usuario y abrir modal de comentario
-    setUsuarioPendiente({ recordId, usuario })
-    setModalComentarioContexto('reasignar')
-    setModalComentarioTitulo('Reasignar PQRS')
-    setShowModalReasignar(false)
-    setShowModalComentario(true)
+    setActualizando(true)
+    setError(null)
+    
+    try {
+      const pqrsRecordId = selectedPQRS.recordId || selectedPQRS.id
+      const nombreEmpleadoNuevo = usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario || 'N/A'
+      const nombreEmpleadoActual = empleadoInfo?.usuario || empleadoInfo?.nombre || 'Usuario actual'
+      
+      // Primero actualizar el fk_Empleado
+      await empleadoService.actualizarPQRS(
+        pqrsRecordId,
+        { 
+          fk_Empleado: String(usuario.recordId || usuario.id)
+        },
+        token
+      )
+      
+      // Agregar comentario automático en la bitácora
+      const comentarioAutomatico = `${nombreEmpleadoActual} reasigna a ${nombreEmpleadoNuevo}`
+      await empleadoService.agregarComentarioBitacora(pqrsRecordId, comentarioAutomatico, token)
+      
+      // Guardar el usuario y abrir modal de comentario para comentario adicional
+      setUsuarioPendiente({ recordId: pqrsRecordId, usuario })
+      setModalComentarioContexto('reasignar')
+      setModalComentarioTitulo('Reasignar PQRS')
+      setShowModalReasignar(false)
+      setShowModalComentario(true)
+    } catch (err) {
+      setError(err.message)
+      if (err.message.includes('Sesión expirada')) {
+        onLogout()
+      }
+    } finally {
+      setActualizando(false)
+    }
   }
 
   // Ordenar historial para mostrar (más reciente primero)
@@ -343,18 +372,9 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
           { Estado: estadoPendiente },
           token
         )
-      } else if (modalComentarioContexto === 'reasignar' && usuarioPendiente) {
-        // Reasignar
-        const usuario = usuarioPendiente.usuario
-        await empleadoService.actualizarPQRS(
-          usuarioPendiente.recordId,
-          { 
-            Asignado_a: usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario,
-            Usuario_asignado: usuario.recordId || usuario.id
-          },
-          token
-        )
       }
+      // Nota: La reasignación ya se hizo antes de abrir el modal de comentario
+      // Solo agregar el comentario adicional aquí
 
       // Agregar comentario a la bitácora
       await empleadoService.agregarComentarioBitacora(recordId, comentario, token)
