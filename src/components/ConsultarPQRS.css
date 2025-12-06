@@ -320,8 +320,8 @@
   text-transform: uppercase;
 }
 
-.pqrs-type.peticion {
-  background: #e3f2fd;
+.pqrs-type.petición {
+  background: #c2e1f7;
   color: #1976d2;
 }
 
@@ -340,8 +340,8 @@
   color: #388e3c;
 }
 
-.pqrs-type.felicitacion {
-  background: #fff9c4;
+.pqrs-type.felicitación {
+  background: #fdf7be;
   color: #f57f17;
 }
 
