@@ -554,6 +554,7 @@ export const pqrsService = {
         Documento: data.numeroDocumento ? Number(data.numeroDocumento) : '',
         Correo: data.email || '',
         Telefono_contacto: data.telefono ? Number(data.telefono) : '',
+        Estado: 'Abierta',
         
         // Información de compra (opcional)
         // Solo incluir si tienen valor
