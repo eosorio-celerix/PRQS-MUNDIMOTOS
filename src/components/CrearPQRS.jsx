@@ -21,6 +21,7 @@ const CrearPQRS = ({ onSuccess }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showTipoInfo, setShowTipoInfo] = useState(false)
+  const [archivos, setArchivos] = useState([])
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -42,6 +43,24 @@ const CrearPQRS = ({ onSuccess }) => {
       }))
       if (error) setError(null)
     }
+  }
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files)
+    setArchivos(prev => [...prev, ...files])
+    if (error) setError(null)
+  }
+
+  const handleRemoveFile = (index) => {
+    setArchivos(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
   const handleSubmit = async (e) => {
@@ -93,7 +112,13 @@ const CrearPQRS = ({ onSuccess }) => {
     }
 
     try {
-      const response = await pqrsService.createPQRSConReintento(formData)
+      // Incluir archivos en los datos
+      const datosConArchivos = {
+        ...formData,
+        archivos: archivos,
+      }
+      
+      const response = await pqrsService.createPQRSConReintento(datosConArchivos)
       
       // Si la creación fue exitosa, enviar email mediante webhook
       if (response.recordId || response.id) {
@@ -125,6 +150,7 @@ const CrearPQRS = ({ onSuccess }) => {
         descripcion: '',
         aceptaPolitica: false,
       })
+      setArchivos([])
       // Llamar al callback de éxito con el recordId
       if (onSuccess && (response.recordId || response.id)) {
         onSuccess(response.recordId || response.id)
@@ -409,7 +435,61 @@ const CrearPQRS = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* SECCIÓN 5: Política de Datos */}
+        {/* SECCIÓN 5: Archivos Adjuntos (Opcional) */}
+        <div className="form-section">
+          <div className="section-header">
+            <h3>5. Archivos Adjuntos (Opcional)</h3>
+            <span className="section-subtitle">Puedes adjuntar documentos relacionados con tu solicitud</span>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="archivos" className="file-upload-label">
+              <span className="file-upload-icon">📎</span>
+              Seleccionar archivos
+              <input
+                id="archivos"
+                type="file"
+                multiple
+                onChange={handleFileChange}
+                className="file-input"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.xls,.xlsx"
+              />
+            </label>
+            <p className="file-hint">
+              Formatos permitidos: PDF, Word, Excel, Imágenes (JPG, PNG, GIF). Tamaño máximo: 10MB por archivo.
+            </p>
+
+            {archivos.length > 0 && (
+              <div className="archivos-list">
+                <h4>Archivos seleccionados ({archivos.length}):</h4>
+                {archivos.map((archivo, index) => (
+                  <div key={index} className="archivo-item">
+                    <span className="archivo-icon">
+                      {archivo.type?.includes('pdf') ? '📄' : 
+                       archivo.type?.includes('image') ? '🖼️' : 
+                       archivo.type?.includes('word') || archivo.type?.includes('document') ? '📝' :
+                       archivo.type?.includes('excel') || archivo.type?.includes('spreadsheet') ? '📊' : '📎'}
+                    </span>
+                    <div className="archivo-info">
+                      <span className="archivo-nombre">{archivo.name}</span>
+                      <span className="archivo-tamaño">{formatFileSize(archivo.size)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-remove-file"
+                      onClick={() => handleRemoveFile(index)}
+                      title="Eliminar archivo"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* SECCIÓN 6: Política de Datos */}
         <div className="form-section">
           <div className="section-header">
             <h3>5. Política de Tratamiento de Datos</h3>
@@ -465,6 +545,7 @@ const CrearPQRS = ({ onSuccess }) => {
                 descripcion: '',
                 aceptaPolitica: false,
               })
+              setArchivos([])
               setError(null)
             }}
             disabled={loading}

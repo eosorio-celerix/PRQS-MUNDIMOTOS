@@ -265,6 +265,99 @@ const getRecordById = async (recordId) => {
 }
 
 /**
+ * Subir archivos adjuntos a un campo contenedor de FileMaker
+ * El campo Adjuntos está en la tabla tblPQRSBitacora
+ */
+const subirArchivosAdjuntos = async (pqrsRecordId, archivos, token) => {
+  try {
+    const layoutBitacora = 'tblPQRSBitacora'
+    const campoContenedor = 'Adjuntos'
+    const resultados = []
+    
+    for (const archivo of archivos) {
+      try {
+        // Primero crear un registro en tblPQRSBitacora con la relación a la PQRS
+        const urlCrearRegistro = isDevelopment
+          ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records`
+          : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records`
+        
+        const headers = {
+          'X-FM-Data-Session-Token': token,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        }
+        
+        // Crear registro en bitácora con la relación a la PQRS
+        const registroResponse = await axios.request({
+          method: 'POST',
+          url: urlCrearRegistro,
+          data: {
+            fieldData: {
+              fk_PQRS: String(pqrsRecordId),
+              Accion: 'Adjunto',
+              Comentario: `Archivo adjunto: ${archivo.name}`,
+            },
+          },
+          headers: headers,
+          transformRequest: [(data) => JSON.stringify(data)],
+          validateStatus: function (status) {
+            return status < 500
+          }
+        })
+        
+        if (!registroResponse.data?.response?.recordId) {
+          throw new Error('No se pudo crear el registro en bitácora para el adjunto')
+        }
+        
+        const bitacoraRecordId = registroResponse.data.response.recordId
+        
+        // Ahora subir el archivo al campo contenedor en el registro de bitácora
+        const formData = new FormData()
+        formData.append('upload', archivo, archivo.name)
+        
+        const urlSubirArchivo = isDevelopment
+          ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records/${bitacoraRecordId}/containers/${campoContenedor}`
+          : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records/${bitacoraRecordId}/containers/${campoContenedor}`
+        
+        const headersArchivo = {
+          'X-FM-Data-Session-Token': token,
+          'Authorization': `Bearer ${token}`,
+          // No establecer Content-Type, dejar que el navegador lo haga para multipart/form-data
+        }
+        
+        const archivoResponse = await axios.post(urlSubirArchivo, formData, {
+          headers: headersArchivo,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        })
+        
+        if (archivoResponse.data?.response?.modId) {
+          resultados.push({
+            success: true,
+            nombre: archivo.name,
+            modId: archivoResponse.data.response.modId,
+            bitacoraRecordId: bitacoraRecordId,
+          })
+        } else {
+          throw new Error('No se pudo subir el archivo al contenedor')
+        }
+      } catch (error) {
+        console.error(`Error al subir archivo ${archivo.name}:`, error.response?.data?.messages?.[0]?.message || error.message)
+        resultados.push({
+          success: false,
+          nombre: archivo.name,
+          error: error.response?.data?.messages?.[0]?.message || error.message || 'Error al subir el archivo',
+        })
+      }
+    }
+    
+    return resultados
+  } catch (error) {
+    throw new Error(error.message || 'Error al subir archivos adjuntos')
+  }
+}
+
+/**
  * Crear registro en la bitácora para una PQRS
  */
 const crearRegistroBitacora = async (pqrsRecordId, token) => {
@@ -424,20 +517,30 @@ export const pqrsService = {
         // Descripción
         Descripcion_pqrs: data.descripcion || '',
         
-        // Política de datos
-        Politica_datos: data.aceptaPolitica ? '["Acepto"]' : ''
+        // Política de datos (solo incluir si está aceptada)
+        // Nota: Si el campo es calculado o de solo lectura en FileMaker, no incluirlo
+        // Politica_datos: data.aceptaPolitica ? '["Acepto"]' : ''
       }
       
       // Remover campos vacíos opcionales para evitar errores
+      // También remover campos que podrían ser calculados o de solo lectura
+      const requiredFields = ['Solicitud', 'Nombre_completo', 'Tipo_documento', 'Documento', 'Correo', 'Telefono_contacto', 'Descripcion_pqrs']
+      
       Object.keys(fieldData).forEach(key => {
-        if (fieldData[key] === '' || fieldData[key] === null || fieldData[key] === undefined) {
-          // Solo eliminar si no es un campo requerido
-          const requiredFields = ['Solicitud', 'Nombre_completo', 'Tipo_documento', 'Documento', 'Correo', 'Telefono_contacto', 'Descripcion_pqrs', 'Politica_datos']
+        const value = fieldData[key]
+        
+        // Eliminar campos vacíos, null o undefined (excepto los requeridos)
+        if (value === '' || value === null || value === undefined) {
           if (!requiredFields.includes(key)) {
             delete fieldData[key]
           }
         }
       })
+      
+      // Agregar Politica_datos solo si está aceptada (y si el campo es modificable)
+      if (data.aceptaPolitica) {
+        fieldData.Politica_datos = '["Acepto"]'
+      }
       
       const url = isDevelopment 
         ? `/fmi/data/v1/databases/${DATABASE}/layouts/${LAYOUT}/records`
@@ -448,6 +551,9 @@ export const pqrsService = {
         'Authorization': `Bearer ${token}`, // También enviar como Authorization
         'Content-Type': 'application/json',
       }
+      
+      // Log de campos que se van a enviar (para debugging)
+      console.log('Campos a enviar a FileMaker:', Object.keys(fieldData))
       
       // Usar axios.request para tener control total sobre la petición
       const response = await axios.request({
@@ -466,6 +572,16 @@ export const pqrsService = {
       // Verificar primero si la creación fue exitosa (hay recordId)
       if (response.data?.response?.recordId) {
         const recordId = response.data.response.recordId
+        
+        // Subir archivos adjuntos si existen
+        if (data.archivos && data.archivos.length > 0) {
+          try {
+            await subirArchivosAdjuntos(recordId, data.archivos, token)
+          } catch (archivoError) {
+            // No lanzar error si falla la subida de archivos, solo loguear
+            console.error('Error al subir archivos adjuntos:', archivoError.message)
+          }
+        }
         
         // Crear registro en la bitácora después de crear el PQRS
         try {
@@ -486,6 +602,19 @@ export const pqrsService = {
       // Solo lanzar error si el status code es de error o si hay mensajes de error
       if (response.status >= 400 || (response.data?.messages && response.data.messages.length > 0)) {
         const errorMessage = response.data?.messages?.[0]?.message || 'Error al crear el registro'
+        const errorCode = response.data?.messages?.[0]?.code
+        
+        // Si el error es "Field cannot be modified", proporcionar más información
+        if (errorCode === '201' || errorMessage.includes('cannot be modified')) {
+          console.error('Error al crear PQRS - Campo no modificable:', {
+            errorCode,
+            errorMessage,
+            camposEnviados: Object.keys(fieldData),
+            fieldData
+          })
+          throw new Error('Error al crear el registro: Uno o más campos no pueden ser modificados. Por favor, verifica los campos del formulario.')
+        }
+        
         throw new Error(errorMessage)
       }
       
@@ -1090,10 +1219,33 @@ export const empleadoService = {
           // Mapear acciones a texto legible
           const mapeoAcciones = {
             'EstadoCambio': 'Cambio de estado',
+            'Adjunto': 'Archivo adjunto',
+            'Comentario': 'Comentario',
+            'CREADA': 'Creada',
           }
           
           const accionOriginal = fd.Accion || 'Cambio'
           const accionMapeada = mapeoAcciones[accionOriginal] || accionOriginal
+          
+          // Obtener información del adjunto si existe
+          let adjuntoInfo = null
+          if (accionOriginal === 'Adjunto' && record.recordId) {
+            // Extraer nombre del archivo del comentario
+            const nombreArchivo = fd.Comentario?.replace('Archivo adjunto: ', '') || `archivo_${record.recordId}`
+            
+            // Construir URL para descargar desde FileMaker
+            // FileMaker requiere el nombre del archivo en la URL
+            // Si no tenemos el nombre exacto, intentaremos con el nombre extraído del comentario
+            const urlDescarga = isDevelopment
+              ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records/${record.recordId}/containers/Adjuntos/${encodeURIComponent(nombreArchivo)}`
+              : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records/${record.recordId}/containers/Adjuntos/${encodeURIComponent(nombreArchivo)}`
+            
+            adjuntoInfo = {
+              url: urlDescarga,
+              nombre: nombreArchivo,
+              recordId: record.recordId,
+            }
+          }
           
           return {
             id: record.recordId,
@@ -1109,6 +1261,8 @@ export const empleadoService = {
             accion: accionMapeada,
             // Comentario del registro
             comentario: fd.Comentario || null,
+            // Información del adjunto (si existe)
+            adjunto: adjuntoInfo,
             // Usuario que realizó el cambio
             usuario:
               fd.ModifiedBy ||
@@ -1232,6 +1386,182 @@ export const empleadoService = {
         throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente')
       }
       throw new Error(error.response?.data?.messages?.[0]?.message || 'Error al obtener adjuntos')
+    }
+  },
+
+  // Descargar adjunto desde FileMaker
+  descargarAdjunto: async (bitacoraRecordId, nombreArchivo, token) => {
+    try {
+      const layoutBitacora = 'tblPQRSBitacora'
+      
+      // Obtener el registro para obtener la URL del archivo del campo contenedor
+      const urlRecord = isDevelopment
+        ? `/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records/${bitacoraRecordId}`
+        : `${API_BASE_URL}/fmi/data/v1/databases/${DATABASE}/layouts/${layoutBitacora}/records/${bitacoraRecordId}`
+      
+      const headers = {
+        'X-FM-Data-Session-Token': token,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+      
+      const recordResponse = await axios.get(urlRecord, { headers })
+      
+      const fieldData = recordResponse.data?.response?.data?.[0]?.fieldData || {}
+      
+      // Primero intentar usar el campo base64 si existe
+      if (fieldData.base64 || fieldData.Base64) {
+        try {
+          const base64Data = fieldData.base64 || fieldData.Base64
+          
+          // Decodificar el base64 y crear un blob
+          // El formato puede ser: "data:mime/type;base64,datos" o solo los datos base64
+          let base64String = base64Data
+          let mimeType = 'application/octet-stream'
+          
+          // Si tiene el prefijo data:, extraer el tipo MIME
+          if (base64String.startsWith('data:')) {
+            const matches = base64String.match(/^data:([^;]+);base64,(.+)$/)
+            if (matches) {
+              mimeType = matches[1]
+              base64String = matches[2]
+            } else {
+              // Si tiene data: pero no el formato completo, extraer solo los datos
+              base64String = base64String.replace(/^data:[^;]*;base64,/, '')
+            }
+          }
+          
+          // Convertir base64 a blob
+          const byteCharacters = atob(base64String)
+          const byteNumbers = new Array(byteCharacters.length)
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i)
+          }
+          const byteArray = new Uint8Array(byteNumbers)
+          const blob = new Blob([byteArray], { type: mimeType })
+          
+          // Crear un enlace temporal para descargar el archivo
+          const urlBlob = window.URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = urlBlob
+          link.download = nombreArchivo
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          window.URL.revokeObjectURL(urlBlob)
+          
+          return { success: true }
+        } catch (base64Error) {
+          console.warn('Error al procesar base64, intentando con URL:', base64Error.message)
+          // Continuar con el método de URL si falla
+        }
+      }
+      
+      // Si no hay base64 o falló, usar la URL del campo Adjuntos
+      if (!fieldData.Adjuntos && !fieldData.adjuntos) {
+        throw new Error('No se encontró el archivo adjunto en el registro')
+      }
+      
+      const adjuntoUrl = fieldData.Adjuntos || fieldData.adjuntos
+      
+      // FileMaker devuelve una URL de streaming SSL en el campo contenedor
+      // Ejemplo: https://localhost:443/Streaming_SSL/MainDB/...pdf?RCType=EmbeddedRCFileProcessor
+      // Necesitamos reemplazar el host con el host correcto de FileMaker
+      
+      let urlDescarga = adjuntoUrl
+      
+      // Extraer el host de FileMaker desde API_BASE_URL
+      // API_BASE_URL es algo como: https://fms-dev.celerix.com/fmi/data/v1/...
+      // Necesitamos: https://fms-dev.celerix.com
+      let filemakerHost = ''
+      if (isDevelopment) {
+        // En desarrollo, usar el host del API_BASE_URL o el configurado
+        filemakerHost = API_BASE_URL ? API_BASE_URL.replace(/\/fmi.*$/, '') : 'https://fms-dev.celerix.com'
+      } else {
+        filemakerHost = API_BASE_URL.replace(/\/fmi.*$/, '')
+      }
+      
+      // Asegurar que use HTTPS y puerto 443
+      filemakerHost = filemakerHost.replace(/^http:/, 'https:').replace(/:(\d+)?$/, ':443')
+      
+      // Si la URL contiene localhost o necesita reemplazar el host
+      if (typeof adjuntoUrl === 'string') {
+        if (adjuntoUrl.startsWith('http')) {
+          // URL completa - reemplazar el host si es localhost
+          try {
+            const urlObj = new URL(adjuntoUrl)
+            if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+              // Reemplazar localhost con el host de FileMaker
+              urlObj.hostname = new URL(filemakerHost).hostname
+              urlObj.port = '443'
+              urlObj.protocol = 'https:'
+              urlDescarga = urlObj.toString()
+            } else {
+              // Ya tiene el host correcto, usar tal cual
+              urlDescarga = adjuntoUrl
+            }
+          } catch (e) {
+            // Si no se puede parsear, intentar reemplazo simple
+            urlDescarga = adjuntoUrl.replace(/https?:\/\/[^\/]+/, filemakerHost)
+          }
+        } else if (adjuntoUrl.startsWith('/')) {
+          // Ruta absoluta - agregar el host de FileMaker
+          urlDescarga = `${filemakerHost}${adjuntoUrl}`
+        } else {
+          // Ruta relativa
+          urlDescarga = `${filemakerHost}/${adjuntoUrl}`
+        }
+      }
+      
+      console.log('URL de descarga:', urlDescarga)
+      
+      // Para URLs de streaming SSL de FileMaker, necesitamos autenticación
+      // FileMaker puede requerir autenticación básica o token de sesión
+      // Intentaremos usar autenticación básica en la URL
+      
+      // Extraer el host y la ruta de la URL
+      const urlObj = new URL(urlDescarga)
+      
+      // Construir URL con autenticación básica (usuario:contraseña@host)
+      // Esto es necesario porque FileMaker streaming requiere autenticación
+      const usuario = BASIC_AUTH_USER
+      const password = BASIC_AUTH_PASSWORD
+      
+      if (usuario && password) {
+        // Construir URL con autenticación básica
+        const urlConAuth = `${urlObj.protocol}//${usuario}:${encodeURIComponent(password)}@${urlObj.host}${urlObj.pathname}${urlObj.search}`
+        
+        // Crear un enlace temporal y hacer clic en él
+        const link = document.createElement('a')
+        link.href = urlConAuth
+        link.download = nombreArchivo
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        
+        // Agregar al DOM, hacer clic y remover
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      } else {
+        // Si no hay credenciales, intentar con el token como parámetro
+        urlObj.searchParams.append('token', token)
+        urlObj.searchParams.append('X-FM-Data-Session-Token', token)
+        
+        const link = document.createElement('a')
+        link.href = urlObj.toString()
+        link.download = nombreArchivo
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error al descargar adjunto:', error.response?.data || error.message)
+      throw new Error(error.response?.data?.messages?.[0]?.message || error.message || 'Error al descargar el archivo')
     }
   },
 }

@@ -191,7 +191,20 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     
     setLoadingAdjuntos(true)
     try {
-      const adjuntosData = await empleadoService.getAdjuntos(recordId, token)
+      // Obtener todo el historial y filtrar solo los adjuntos
+      const historial = await empleadoService.getHistorialPQRS(recordId, token)
+      // Filtrar solo los registros que tienen adjuntos
+      const adjuntosData = historial
+        .filter(item => item.adjunto)
+        .map(item => ({
+          id: item.id,
+          recordId: item.recordId,
+          nombre: item.adjunto.nombre,
+          fecha: item.fecha,
+          usuario: item.usuario,
+          comentario: item.comentario,
+          adjunto: item.adjunto,
+        }))
       setAdjuntos(adjuntosData)
     } catch (err) {
       setError(err.message)
@@ -207,7 +220,9 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     setLoadingHistorial(true)
     try {
       const historial = await empleadoService.getHistorialPQRS(recordId, token)
-      setHistorialPQRS(historial)
+      // Filtrar solo los comentarios (excluir adjuntos)
+      const comentarios = historial.filter(item => !item.adjunto)
+      setHistorialPQRS(comentarios)
     } catch (err) {
       setError(err.message)
       setHistorialPQRS([])
@@ -659,30 +674,41 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
                     ) : (
                       <div className="adjuntos-list">
                         {adjuntos.map((adjunto, index) => (
-                          <div key={index} className="adjunto-item">
+                          <div key={adjunto.id || index} className="adjunto-item">
                             <div className="adjunto-icon">
-                              {adjunto.tipo === 'pdf' ? '📄' : adjunto.tipo === 'image' ? '🖼️' : '📎'}
+                              📎
                             </div>
                             <div className="adjunto-info">
                               <h4>{adjunto.nombre || `Documento ${index + 1}`}</h4>
-                              {adjunto.tamaño && (
-                                <p className="adjunto-size">{adjunto.tamaño}</p>
-                              )}
                               {adjunto.fecha && (
                                 <p className="adjunto-fecha">📅 {adjunto.fecha}</p>
                               )}
+                              {adjunto.usuario && (
+                                <p className="adjunto-usuario">👤 {adjunto.usuario}</p>
+                              )}
+                              {adjunto.comentario && (
+                                <p className="adjunto-comentario">{adjunto.comentario}</p>
+                              )}
                             </div>
                             <div className="adjunto-actions">
-                              {adjunto.url && (
-                                <a
-                                  href={adjunto.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="btn-descargar"
-                                  title="Descargar"
+                              {adjunto.adjunto && (
+                                <button
+                                  className="btn-descargar-adjunto"
+                                  onClick={async () => {
+                                    try {
+                                      await empleadoService.descargarAdjunto(
+                                        adjunto.adjunto.recordId,
+                                        adjunto.adjunto.nombre,
+                                        token
+                                      )
+                                    } catch (error) {
+                                      setError(error.message || 'Error al descargar el archivo')
+                                      setTimeout(() => setError(null), 5000)
+                                    }
+                                  }}
                                 >
-                                  ⬇️
-                                </a>
+                                  📥 Descargar
+                                </button>
                               )}
                             </div>
                           </div>
