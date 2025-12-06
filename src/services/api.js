@@ -1616,6 +1616,15 @@ export const empleadoService = {
       throw new Error(error.response?.data?.messages?.[0]?.message || error.message || 'Error al descargar el archivo')
     }
   },
+
+  // Subir archivos adjuntos a una PQRS (para empleados)
+  subirArchivosAdjuntos: async (pqrsRecordId, archivos, token) => {
+    try {
+      return await subirArchivosAdjuntos(pqrsRecordId, archivos, token)
+    } catch (error) {
+      throw new Error(error.message || 'Error al subir archivos adjuntos')
+    }
+  },
 }
 
 export default api

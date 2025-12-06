@@ -401,7 +401,7 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
     return 'dias-restantes-normal'
   }
 
-  const handleGuardarComentario = async (comentario, notificarCliente) => {
+  const handleGuardarComentario = async (comentario, notificarCliente, archivos = []) => {
     if (!selectedPQRS || !token) return
 
     setActualizando(true)
@@ -422,8 +422,20 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
       // Nota: La reasignación ya se hizo antes de abrir el modal de comentario
       // Solo agregar el comentario adicional aquí
 
-      // Agregar comentario a la bitácora
-      await empleadoService.agregarComentarioBitacora(recordId, comentario, token)
+      // Agregar comentario a la bitácora (solo si hay comentario o archivos)
+      if (comentario.trim() || archivos.length > 0) {
+        await empleadoService.agregarComentarioBitacora(recordId, comentario || 'Archivos adjuntos', token)
+      }
+
+      // Subir archivos adjuntos si existen
+      if (archivos && archivos.length > 0) {
+        try {
+          await empleadoService.subirArchivosAdjuntos(recordId, archivos, token)
+        } catch (archivoError) {
+          console.error('Error al subir archivos adjuntos:', archivoError.message)
+          // No lanzar error si falla la subida de archivos, solo loguear
+        }
+      }
 
       // Si está marcado para notificar al cliente, enviar email
       if (notificarCliente) {
@@ -457,9 +469,11 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
       setModalComentarioContexto(null)
 
       // Mostrar mensaje de éxito
+      const tieneArchivos = archivos && archivos.length > 0
+      const mensajeArchivos = tieneArchivos ? ` y ${archivos.length} archivo${archivos.length !== 1 ? 's' : ''} adjuntado${archivos.length !== 1 ? 's' : ''}` : ''
       const mensaje = contexto 
-        ? 'Acción realizada y comentario agregado exitosamente' + (notificarCliente ? ' y notificación enviada al cliente' : '')
-        : 'Comentario agregado exitosamente' + (notificarCliente ? ' y notificación enviada al cliente' : '')
+        ? 'Acción realizada y comentario agregado exitosamente' + mensajeArchivos + (notificarCliente ? ' y notificación enviada al cliente' : '')
+        : 'Comentario agregado exitosamente' + mensajeArchivos + (notificarCliente ? ' y notificación enviada al cliente' : '')
       setSuccessMessage(mensaje)
       
       // Limpiar mensaje después de 5 segundos
@@ -955,9 +969,9 @@ const GestionPQRS = ({ empleadoInfo, onLogout }) => {
           setUsuarioPendiente(null)
           setError(null)
         }}
-        onGuardar={async (comentario, notificarCliente) => {
+        onGuardar={async (comentario, notificarCliente, archivos) => {
           try {
-            await handleGuardarComentario(comentario, notificarCliente)
+            await handleGuardarComentario(comentario, notificarCliente, archivos)
           } catch (err) {
             // El error ya se maneja en handleGuardarComentario
             throw err
