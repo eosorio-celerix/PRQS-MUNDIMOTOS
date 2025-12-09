@@ -256,6 +256,12 @@
   font-style: italic;
 }
 
+.usuario-area {
+  font-size: 0.875rem;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
 .usuario-email {
   font-size: 0.875rem;
   color: #666;

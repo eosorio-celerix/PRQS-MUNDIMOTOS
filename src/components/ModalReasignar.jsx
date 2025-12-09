@@ -185,7 +185,11 @@ const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
                 ) : (
                   usuarios.map((usuario) => {
                     const nombre = usuario.Nombre || usuario.nombre || usuario.Usuario || usuario.usuario || 'Sin nombre'
-                    const claseNombre = usuario.claseEmpleado?.nombre || ''
+                    const claseNombre = usuario.claseEmpleado?.nombre || usuario.ClaseEmpleado || usuario.claseEmpleado || ''
+                    // Obtener el área asociada - puede estar en diferentes campos
+                    const area = usuario.Area || usuario.area || usuario.Area_pqrs || usuario.area_pqrs || 
+                                usuario.ClaseSolicitud || usuario.claseSolicitud || 
+                                usuario.fk_ClaseSolicitud || usuario.Fk_ClaseSolicitud || ''
                     const isSelected = selectedUsuario?.recordId === usuario.recordId
                     
                     return (
@@ -198,6 +202,9 @@ const ModalReasignar = ({ isOpen, onClose, onReasignar, recordId, token }) => {
                           <span className="usuario-nombre">{nombre}</span>
                           {claseNombre && (
                             <span className="usuario-clase">{claseNombre}</span>
+                          )}
+                          {area && (
+                            <span className="usuario-area">Área: {area}</span>
                           )}
                           {usuario.Email && (
                             <span className="usuario-email">{usuario.Email}</span>
