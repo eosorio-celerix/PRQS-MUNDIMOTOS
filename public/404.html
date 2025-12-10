@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PQRS - Mundimotos</title>
+    <script>
+      // Redirigir a index.html para manejar el enrutamiento de SPA en GitHub Pages
+      // GitHub Pages usa 404.html para rutas que no existen
+      var path = window.location.pathname;
+      var base = '/PRQS-MUNDIMOTOS/';
+      // Si ya estamos en la ruta base, solo agregar index.html
+      if (path === base || path === base.slice(0, -1)) {
+        window.location.replace(base + 'index.html' + window.location.search + window.location.hash);
+      } else {
+        // Para otras rutas, redirigir manteniendo la ruta
+        window.location.replace(base + 'index.html' + window.location.search + window.location.hash);
+      }
+    </script>
+  </head>
+  <body>
+    <p>Redirigiendo...</p>
+  </body>
+</html>
+
