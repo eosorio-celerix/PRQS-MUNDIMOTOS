@@ -58,23 +58,61 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    // Log de respuesta exitosa (temporal para depuración)
+    // Log de respuesta exitosa (siempre visible para depuración CORS)
+    const corsHeaders = {
+      'access-control-allow-origin': response.headers['access-control-allow-origin'],
+      'access-control-allow-methods': response.headers['access-control-allow-methods'],
+      'access-control-allow-headers': response.headers['access-control-allow-headers']
+    }
+    
+    const hasCorsHeaders = Object.values(corsHeaders).some(h => h !== undefined)
+    const method = response.config.method?.toUpperCase()
+    
+    // Advertencia específica para GET sin CORS (siempre visible)
+    if (method === 'GET' && !hasCorsHeaders) {
+      console.warn('⚠️⚠️⚠️ [CORS DEBUG] GET sin headers CORS ⚠️⚠️⚠️')
+      console.warn('URL:', response.config.url)
+      console.warn('Status:', response.status)
+      console.warn('Headers CORS encontrados:', corsHeaders)
+      console.warn('Todos los headers:', Object.keys(response.headers || {}))
+      console.warn('⚠️ API Gateway debe agregar headers CORS a las respuestas GET')
+      console.warn('⚠️ Configura Integration Response > Header Mappings en API Gateway')
+    }
+    
+    // Log general para todas las respuestas (solo en producción para debug)
     if (!isDevelopment) {
       console.log('✅ [AXIOS Response]', {
         status: response.status,
+        method: method,
         url: response.config.url,
-        headers: Object.keys(response.headers || {}),
-        corsHeaders: {
-          'access-control-allow-origin': response.headers['access-control-allow-origin'],
-          'access-control-allow-methods': response.headers['access-control-allow-methods'],
-          'access-control-allow-headers': response.headers['access-control-allow-headers']
-        }
+        hasCorsHeaders: hasCorsHeaders,
+        corsHeaders: corsHeaders
       })
     }
+    
     return response
   },
   (error) => {
-    // Log de error (temporal para depuración)
+    // Log de error (siempre visible para errores CORS)
+    const isCorsError = error.message?.includes('CORS') || 
+                       error.message?.includes('cors') || 
+                       error.message?.includes('Access-Control') ||
+                       error.code === 'ERR_NETWORK' ||
+                       (!error.response && error.config)
+    
+    // Si es un error de CORS, mostrar información adicional (siempre visible)
+    if (isCorsError) {
+      console.error('🚨🚨🚨 ERROR DE CORS DETECTADO 🚨🚨🚨')
+      console.error('Mensaje:', error.message)
+      console.error('URL:', error.config?.url)
+      console.error('Método:', error.config?.method?.toUpperCase())
+      console.error('Status:', error.response?.status)
+      console.error('La petición fue bloqueada por el navegador debido a CORS')
+      console.error('Verifica que API Gateway tenga configurado CORS correctamente')
+      console.error('Configura Integration Response > Header Mappings en API Gateway')
+    }
+    
+    // Log general de errores (solo en producción)
     if (!isDevelopment) {
       console.error('❌ [AXIOS Error]', {
         message: error.message,
@@ -83,18 +121,11 @@ api.interceptors.response.use(
         statusText: error.response?.statusText,
         url: error.config?.url,
         headers: error.response?.headers,
-        corsError: error.message?.includes('CORS') || error.message?.includes('cors'),
+        corsError: isCorsError,
         isNetworkError: !error.response
       })
-      
-      // Si es un error de CORS, mostrar información adicional
-      if (error.message?.includes('CORS') || error.message?.includes('cors')) {
-        console.error('🚨 ERROR DE CORS DETECTADO')
-        console.error('La petición fue bloqueada por el navegador debido a CORS')
-        console.error('Verifica que API Gateway tenga configurado CORS correctamente')
-        console.error('URL de la petición:', error.config?.url)
-      }
     }
+    
     return Promise.reject(error)
   }
 )
@@ -282,12 +313,32 @@ const getRecordById = async (recordId) => {
       }
     })
     
-    // Log de respuesta (temporal)
-    console.log('✅ [GET Record] Respuesta recibida:', {
-      status: response.status,
-      headers: response.headers,
-      data: response.data?.response ? 'Datos recibidos' : 'Sin datos'
-    })
+    // Log de respuesta - Enfocado en CORS (siempre visible)
+    const corsHeaders = {
+      'access-control-allow-origin': response.headers['access-control-allow-origin'],
+      'access-control-allow-methods': response.headers['access-control-allow-methods'],
+      'access-control-allow-headers': response.headers['access-control-allow-headers'],
+      'access-control-max-age': response.headers['access-control-max-age']
+    }
+    
+    const hasCorsHeaders = Object.values(corsHeaders).some(h => h !== undefined)
+    
+    // Advertencia si no hay headers CORS (siempre visible)
+    if (!hasCorsHeaders) {
+      console.warn('⚠️⚠️⚠️ [GET Record] ADVERTENCIA: La respuesta NO tiene headers CORS ⚠️⚠️⚠️')
+      console.warn('URL:', url)
+      console.warn('Status:', response.status)
+      console.warn('Headers CORS encontrados:', corsHeaders)
+      console.warn('Todos los headers de respuesta:', Object.keys(response.headers))
+      console.warn('⚠️ API Gateway debe agregar headers CORS a las respuestas GET')
+      console.warn('⚠️ Verifica Integration Response > Header Mappings en API Gateway')
+    } else {
+      console.log('✅ [GET Record] Respuesta con headers CORS:', {
+        status: response.status,
+        url: url,
+        corsHeaders: corsHeaders
+      })
+    }
     
     if (response.data?.response?.data?.[0]) {
       return response.data.response.data[0]
