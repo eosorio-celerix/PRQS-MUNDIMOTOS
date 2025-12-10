@@ -269,12 +269,18 @@ const getRecordById = async (recordId) => {
     console.log('🔍 [GET Record] Headers enviados:', headers)
     console.log('🔍 [GET Record] API_BASE_URL:', API_BASE_URL)
     
-    const response = await axios.get(
-      url,
-      {
-        headers: headers,
+    // Usar axios.request para tener el mismo comportamiento que POST sessions
+    const response = await axios.request({
+      method: 'GET',
+      url: url,
+      headers: headers,
+      // Configuración para CORS
+      withCredentials: false,
+      // Asegurar que los headers se envíen
+      validateStatus: function (status) {
+        return status < 500; // Resolver para cualquier código menor que 500
       }
-    )
+    })
     
     // Log de respuesta (temporal)
     console.log('✅ [GET Record] Respuesta recibida:', {
@@ -305,12 +311,15 @@ const getRecordById = async (recordId) => {
           'Content-Type': 'application/json',
         }
         
-        const retryResponse = await axios.get(
-          retryUrl,
-          {
-            headers: retryHeaders,
+        const retryResponse = await axios.request({
+          method: 'GET',
+          url: retryUrl,
+          headers: retryHeaders,
+          withCredentials: false,
+          validateStatus: function (status) {
+            return status < 500;
           }
-        )
+        })
         
         if (retryResponse.data?.response?.data?.[0]) {
           return retryResponse.data.response.data[0]
