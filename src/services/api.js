@@ -36,10 +36,65 @@ const api = axios.create({
   timeout: 30000,
 })
 
-// Interceptor para manejar errores
-api.interceptors.response.use(
-  (response) => response,
+// Interceptor para manejar errores y logging
+api.interceptors.request.use(
+  (config) => {
+    // Log de petición (temporal para depuración)
+    if (!isDevelopment) {
+      console.log('🚀 [AXIOS Request]', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        baseURL: config.baseURL,
+        headers: Object.keys(config.headers || {}),
+        fullUrl: `${config.baseURL}${config.url}`
+      })
+    }
+    return config
+  },
   (error) => {
+    return Promise.reject(error)
+  }
+)
+
+api.interceptors.response.use(
+  (response) => {
+    // Log de respuesta exitosa (temporal para depuración)
+    if (!isDevelopment) {
+      console.log('✅ [AXIOS Response]', {
+        status: response.status,
+        url: response.config.url,
+        headers: Object.keys(response.headers || {}),
+        corsHeaders: {
+          'access-control-allow-origin': response.headers['access-control-allow-origin'],
+          'access-control-allow-methods': response.headers['access-control-allow-methods'],
+          'access-control-allow-headers': response.headers['access-control-allow-headers']
+        }
+      })
+    }
+    return response
+  },
+  (error) => {
+    // Log de error (temporal para depuración)
+    if (!isDevelopment) {
+      console.error('❌ [AXIOS Error]', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        headers: error.response?.headers,
+        corsError: error.message?.includes('CORS') || error.message?.includes('cors'),
+        isNetworkError: !error.response
+      })
+      
+      // Si es un error de CORS, mostrar información adicional
+      if (error.message?.includes('CORS') || error.message?.includes('cors')) {
+        console.error('🚨 ERROR DE CORS DETECTADO')
+        console.error('La petición fue bloqueada por el navegador debido a CORS')
+        console.error('Verifica que API Gateway tenga configurado CORS correctamente')
+        console.error('URL de la petición:', error.config?.url)
+      }
+    }
     return Promise.reject(error)
   }
 )
@@ -209,12 +264,24 @@ const getRecordById = async (recordId) => {
       'Content-Type': 'application/json',
     }
     
+    // Log para depuración (temporal)
+    console.log('🔍 [GET Record] URL:', url)
+    console.log('🔍 [GET Record] Headers enviados:', headers)
+    console.log('🔍 [GET Record] API_BASE_URL:', API_BASE_URL)
+    
     const response = await axios.get(
       url,
       {
         headers: headers,
       }
     )
+    
+    // Log de respuesta (temporal)
+    console.log('✅ [GET Record] Respuesta recibida:', {
+      status: response.status,
+      headers: response.headers,
+      data: response.data?.response ? 'Datos recibidos' : 'Sin datos'
+    })
     
     if (response.data?.response?.data?.[0]) {
       return response.data.response.data[0]
