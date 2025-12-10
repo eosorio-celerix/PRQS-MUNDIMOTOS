@@ -14,3 +14,5 @@ node_modules
 .env.example.production
 
 package-lock.json
+
+/dist

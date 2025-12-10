@@ -36,10 +36,8 @@ jobs:
         env:
           # Configura el base path para GitHub Pages
           # IMPORTANTE: Debe coincidir exactamente con la ruta en tu URL de GitHub Pages
-          # Si tu URL es: username.github.io/REPO-NAME/, entonces usa: /REPO-NAME/
-          # Si tu URL es: username.github.io/, entonces usa: /
-          # El nombre se obtiene automáticamente, pero si no coincide, hardcodea el nombre exacto aquí
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          # URL: https://eosorio-celerix.github.io/PRQS-MUNDIMOTOS/
+          VITE_BASE_PATH: /PRQS-MUNDIMOTOS/
           # Configura las variables de entorno necesarias para el build
           # Ajusta estos valores según tus necesidades
           VITE_FM_API_BASE_URL: ${{ secrets.VITE_FM_API_BASE_URL || 'https://fms-dev.celerix.com' }}

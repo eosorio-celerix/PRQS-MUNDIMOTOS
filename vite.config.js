@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 // Si el repositorio está en la raíz (username.github.io), usar '/'
 // Si está en un subdirectorio (username.github.io/repo-name), usar '/repo-name/'
 // Puedes configurarlo mediante la variable de entorno VITE_BASE_PATH
-const base = process.env.VITE_BASE_PATH || '/PQRS-MundiMotos-REPO/';
+const base = process.env.VITE_BASE_PATH || '/PRQS-MUNDIMOTOS/';
 
 export default defineConfig({
   base: base,
